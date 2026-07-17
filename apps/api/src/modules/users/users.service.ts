@@ -20,6 +20,23 @@ export class UsersService {
     });
   }
 
+  findByEmailForAuth(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    return this.prisma.user.findUnique({
+      where: {
+        email: normalizedEmail,
+      },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        role: true,
+        isActive: true,
+      },
+    });
+  }
+
   async createPatientUser(dto: CreatePatientUserDto) {
     const normalizedEmail = dto.email.trim().toLowerCase();
 
