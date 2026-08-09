@@ -1,5 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { hash } from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
+
 import { UserRole } from '../../../generated/prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreatePatientUserDto } from './dto/create-patient-user.dto';
@@ -7,18 +9,6 @@ import { CreatePatientUserDto } from './dto/create-patient-user.dto';
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
-
-  findAll() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-      },
-    });
-  }
 
   findByEmailForAuth(email: string) {
     const normalizedEmail = email.trim().toLowerCase();
@@ -56,12 +46,19 @@ export class UsersService {
     }
 
     const passwordHash = await hash(dto.password, 12);
+    const mrn = this.generateMrn();
 
     return this.prisma.user.create({
       data: {
         email: normalizedEmail,
         passwordHash,
         role: UserRole.PATIENT,
+
+        patientProfile: {
+          create: {
+            mrn,
+          },
+        },
       },
       select: {
         id: true,
@@ -69,7 +66,23 @@ export class UsersService {
         role: true,
         isActive: true,
         createdAt: true,
+
+        patientProfile: {
+          select: {
+            mrn: true,
+          },
+        },
       },
     });
+  }
+
+  private generateMrn(): string {
+    const year = new Date().getUTCFullYear();
+
+    const randomPart = randomBytes(8)
+      .toString('hex')
+      .toUpperCase();
+
+    return `MP-${year}-${randomPart}`;
   }
 }
