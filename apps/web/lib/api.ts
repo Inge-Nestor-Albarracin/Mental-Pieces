@@ -1,6 +1,9 @@
 const API_URL = 'http://127.0.0.1:3001';
 
-export async function login(email: string, password: string) {
+export async function login(
+  email: string,
+  password: string,
+) {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
     headers: {
@@ -24,18 +27,85 @@ export async function login(email: string, password: string) {
 }
 
 export async function getMyProfile(token: string) {
-  const response = await fetch(`${API_URL}/patients/me`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
+  const response = await fetch(
+    `${API_URL}/patients/me`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+
+    throw new Error(
+      error.message ??
+        'No fue posible consultar el perfil.',
+    );
+  }
+
+  return response.json();
+}
+
+export async function registerPatient(
+  email: string,
+  password: string,
+) {
+  const response = await fetch(`${API_URL}/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email,
+      password,
+    }),
   });
 
   if (!response.ok) {
     const error = await response.json();
 
     throw new Error(
-      error.message ?? 'No fue posible consultar el perfil.',
+      error.message ??
+        'No fue posible crear la cuenta.',
+    );
+  }
+
+  return response.json();
+}
+
+export interface UpdatePatientProfile {
+  fullName?: string;
+  birthDate?: string;
+  gender?: string;
+  genderOther?: string;
+  phone?: string;
+}
+
+export async function updateMyProfile(
+  token: string,
+  data: UpdatePatientProfile,
+) {
+  const response = await fetch(
+    `${API_URL}/patients/me`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+
+    throw new Error(
+      error.message ??
+        'No fue posible actualizar el perfil.',
     );
   }
 
