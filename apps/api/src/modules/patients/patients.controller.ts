@@ -8,10 +8,8 @@ import {
 } from '@nestjs/common';
 
 import { UserRole } from '../../../generated/prisma/client';
-import {
-  AuthenticatedRequest,
-  JwtAuthGuard,
-} from '../auth/auth.guard';
+import { JwtAuthGuard } from '../auth/auth.guard';
+import type { AuthenticatedRequest } from '../auth/auth.guard'; 
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';

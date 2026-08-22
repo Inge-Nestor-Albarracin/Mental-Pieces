@@ -7,9 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '../../../generated/prisma/client';
 
-import {
-  AuthenticatedRequest,
-} from './auth.guard';
+import type { AuthenticatedRequest } from './auth.guard';
 import {
   ROLES_KEY,
 } from './roles.decorator';
