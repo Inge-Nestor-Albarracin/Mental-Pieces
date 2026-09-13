@@ -42,7 +42,7 @@ export default function LoginPage() {
         result.accessToken,
       );
 
-      router.push('/profile');
+      router.push('/dashboard');
     } catch (error) {
       if (error instanceof Error) {
         setError(error.message);
@@ -82,7 +82,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 shadow-sm">
               <Image
-                src="/mental-pieces-logo.jpg"
+                src="/mental-pieces-logo.jpeg"
                 alt="Logo de Mental Pieces"
                 width={48}
                 height={48}
@@ -126,16 +126,17 @@ export default function LoginPage() {
         <div className="w-full max-w-[380px]">
           {/* Logo */}
           <div className="mb-10">
-            <div className="mb-5 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-[#DDD5CA] bg-white p-2 shadow-sm">
-              <Image
-                src="/mental-pieces-logo.jpg"
-                alt="Logo de Mental Pieces"
-                width={80}
-                height={80}
-                className="h-full w-full object-contain"
-                priority
-              />
-            </div>
+            <div className="w-[220px]">
+            <Image
+              src="/mental-pieces-logo.jpeg"
+              alt="Mental Pieces by Paula Sarmiento"
+              width={500}
+              height={250}
+              className="h-auto w-full object-contain"
+              priority
+            />
+          </div>
+                      
 
             <h1 className="font-serif text-3xl font-medium leading-tight text-foreground">
               Bienvenido de nuevo

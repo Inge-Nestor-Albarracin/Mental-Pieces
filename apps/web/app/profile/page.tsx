@@ -128,13 +128,11 @@ export default function ProfilePage() {
 
           <ProfileItem
             label="Fecha de nacimiento"
-            value={
-              profile.birthDate
-                ? new Date(
-                    profile.birthDate,
-                  ).toLocaleDateString()
-                : null
-            }
+             value={
+                profile.birthDate
+                  ? formatBirthDate(profile.birthDate)
+                  : null
+              }
           />
 
           <ProfileItem
@@ -179,4 +177,15 @@ function ProfileItem({
       </p>
     </div>
   );
+}
+
+function formatBirthDate(
+  date: string,
+): string {
+  const datePart = date.slice(0, 10);
+
+  const [year, month, day] =
+    datePart.split('-');
+
+  return `${day}/${month}/${year}`;
 }
