@@ -8,7 +8,7 @@ import {
 
 import {
   PrismaService,
-} from './database/prisma.service';
+} from '../src/database/prisma.service';
 
 async function bootstrapAdmin() {
   const email =
@@ -50,7 +50,8 @@ async function bootstrapAdmin() {
     );
   }
 
-  const prisma = new PrismaService();
+  const prisma =
+    new PrismaService();
 
   try {
     await prisma.$connect();
@@ -60,6 +61,7 @@ async function bootstrapAdmin() {
         where: {
           email,
         },
+
         select: {
           id: true,
           email: true,
@@ -86,7 +88,8 @@ async function bootstrapAdmin() {
           staffProfile: {
             create: {
               fullName,
-              position: 'Administrador',
+              position:
+                'Administrador',
             },
           },
         },
@@ -116,7 +119,7 @@ async function bootstrapAdmin() {
   }
 }
 
-void bootstrapAdmin().catch(
+bootstrapAdmin().catch(
   (error: unknown) => {
     if (error instanceof Error) {
       console.error(
