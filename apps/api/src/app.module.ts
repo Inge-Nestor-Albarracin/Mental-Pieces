@@ -12,6 +12,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { PatientsModule } from './modules/patients/patients.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { UsersModule } from './modules/users/users.module';
+import { ClinicalModule } from './modules/clinical/clinical.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { UsersModule } from './modules/users/users.module';
     StaffModule,
     AvailabilityModule,
     AppointmentsModule,
+    ClinicalModule,
   ],
 
   controllers: [AppController],

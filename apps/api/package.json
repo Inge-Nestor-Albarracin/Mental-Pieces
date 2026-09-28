@@ -76,6 +76,11 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "(^|/)prisma\\.service$": "<rootDir>/../test/support/database-blocked.ts",
+      "generated/prisma/client$": "<rootDir>/../test/support/prisma-client.ts",
+      "^(pg|@prisma/adapter-pg|@prisma/client)$": "<rootDir>/../test/support/database-blocked.ts"
+    }
   }
 }

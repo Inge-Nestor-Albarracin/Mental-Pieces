@@ -54,6 +54,10 @@ model User {
 
   psychologistAvailabilities PsychologistAvailability[]
   psychologistAppointments   Appointment[]              @relation("PsychologistAppointments")
+
+  careRelationships CareRelationship[]    @relation("CarePsychologist")
+  clinicalNotes     ClinicalSessionNote[] @relation("NoteAuthor")
+  auditLogs         AuditLog[]
 }
 
 model Patient {
@@ -69,8 +73,10 @@ model Patient {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id])
-  appointments Appointment[]
+  user              User                  @relation(fields: [userId], references: [id])
+  appointments      Appointment[]
+  careRelationships CareRelationship[]
+  clinicalNotes     ClinicalSessionNote[]
 }
 
 model StaffProfile {
@@ -114,9 +120,69 @@ model Appointment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  patient      Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  psychologist User    @relation("PsychologistAppointments", fields: [psychologistId], references: [id], onDelete: Restrict)
+  patient      Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  psychologist User                 @relation("PsychologistAppointments", fields: [psychologistId], references: [id], onDelete: Restrict)
+  clinicalNote ClinicalSessionNote?
 
   @@index([patientId, appointmentDate])
   @@index([psychologistId, appointmentDate, status])
+}
+
+model CareRelationship {
+  id             String    @id @default(cuid())
+  patientId      String
+  psychologistId String
+  isActive       Boolean   @default(true)
+  assignedAt     DateTime  @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  patient      Patient               @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  psychologist User                  @relation("CarePsychologist", fields: [psychologistId], references: [id], onDelete: Restrict)
+  notes        ClinicalSessionNote[]
+
+  // One durable relationship per pair, including after revocation.
+  @@unique([patientId, psychologistId])
+  @@index([psychologistId, isActive, patientId])
+}
+
+model ClinicalSessionNote {
+  id             String   @id @default(cuid())
+  patientId      String
+  psychologistId String
+  // A principal note per completed appointment; unlinked notes remain supported.
+  appointmentId  String?  @unique
+  content        String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  patient          Patient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  psychologist     User             @relation("NoteAuthor", fields: [psychologistId], references: [id], onDelete: Restrict)
+  careRelationship CareRelationship @relation(fields: [patientId, psychologistId], references: [patientId, psychologistId], onDelete: Restrict)
+  appointment      Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([psychologistId, patientId, createdAt, id])
+}
+
+enum ClinicalAuditAction {
+  CARE_RELATIONSHIP_CREATED
+  CARE_RELATIONSHIP_ENDED
+  CLINICAL_NOTE_CREATED
+  APPOINTMENT_COMPLETED
+  APPOINTMENT_NO_SHOW
+}
+
+model AuditLog {
+  id           String              @id @default(cuid())
+  actorUserId  String
+  action       ClinicalAuditAction
+  resourceType String
+  resourceId   String
+  createdAt    DateTime            @default(now())
+
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([resourceType, resourceId, createdAt])
+  @@index([actorUserId, createdAt])
 }

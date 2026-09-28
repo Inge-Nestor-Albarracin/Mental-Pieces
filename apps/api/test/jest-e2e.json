@@ -3,6 +3,11 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "moduleNameMapper": {
+    "(^|/)prisma\\.service$": "<rootDir>/support/database-blocked.ts",
+    "generated/prisma/client$": "<rootDir>/support/prisma-client.ts",
+    "^(pg|@prisma/adapter-pg|@prisma/client)$": "<rootDir>/support/database-blocked.ts"
+  },
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   }

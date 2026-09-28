@@ -4,7 +4,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { AppHeader } from '../../components/app-header';
-import { getMyProfile } from '../../lib/api';
+import { RoleGate } from '../../components/role-gate';
+import {
+  getMyAppointments,
+  getMyProfile,
+  type AppointmentSummary,
+} from '../../lib/api';
 
 interface PatientProfile {
   id: string;
@@ -18,10 +23,17 @@ interface PatientProfile {
 }
 
 export default function DashboardPage() {
+  return <RoleGate role="PATIENT"><PatientDashboard /></RoleGate>;
+}
+
+function PatientDashboard() {
   const router = useRouter();
 
   const [profile, setProfile] =
     useState<PatientProfile | null>(null);
+
+  const [appointments, setAppointments] =
+    useState<AppointmentSummary[]>([]);
 
   const [isLoading, setIsLoading] =
     useState(true);
@@ -39,10 +51,14 @@ export default function DashboardPage() {
       }
 
       try {
-        const result =
-          await getMyProfile(token);
+        const [profileResult, appointmentsResult] =
+          await Promise.all([
+            getMyProfile(token),
+            getMyAppointments(token),
+          ]);
 
-        setProfile(result);
+        setProfile(profileResult);
+        setAppointments(appointmentsResult);
       } catch (error) {
         if (error instanceof Error) {
           setError(error.message);
@@ -86,6 +102,18 @@ export default function DashboardPage() {
   const firstName =
     profile.fullName?.trim().split(' ')[0] ??
     'paciente';
+
+  const nextAppointment =
+    appointments
+      .filter(
+        (appointment) =>
+          appointment.status === 'SCHEDULED',
+      )
+      .sort(
+        (left, right) =>
+          new Date(left.appointmentDate).getTime() -
+          new Date(right.appointmentDate).getTime(),
+      )[0] ?? null;
 
   return (
     <div className="min-h-screen bg-[#F5F0EB]">
@@ -142,16 +170,35 @@ export default function DashboardPage() {
                 Próxima cita
               </p>
 
-              <h2 className="mt-1 text-xl font-semibold text-[#2C2420]">
-                No tienes citas programadas
-              </h2>
+              {nextAppointment ? (
+                <>
+                  <h2 className="mt-1 text-xl font-semibold text-[#2C2420]">
+                    {new Date(
+                      `${nextAppointment.appointmentDate}T12:00:00`,
+                    ).toLocaleDateString('es-CO', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </h2>
 
-              <p className="mt-2 text-sm text-[#7A6E66]">
-                La gestión de citas estará
-                disponible cuando terminemos el
-                módulo de disponibilidad y
-                agendamiento.
-              </p>
+                  <p className="mt-2 text-sm text-[#7A6E66]">
+                    {nextAppointment.psychologist.fullName ?? 'Psicólogo'}
+                    {' · '}
+                    {nextAppointment.startTime} - {nextAppointment.endTime}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="mt-1 text-xl font-semibold text-[#2C2420]">
+                    No tienes citas programadas
+                  </h2>
+
+                  <p className="mt-2 text-sm text-[#7A6E66]">
+                    Puedes agendar tu próxima sesión desde el módulo de citas.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#EEF4EF] text-[#6B8F71]">
@@ -165,14 +212,18 @@ export default function DashboardPage() {
           <DashboardCard
             title="Agendar cita"
             description="Consulta horarios disponibles y solicita una cita."
-            disabled
+            onClick={() =>
+              router.push('/appointments/new')
+            }
             icon={<CalendarIcon />}
           />
 
           <DashboardCard
             title="Mis citas"
             description="Consulta tus citas programadas y su estado."
-            disabled
+            onClick={() =>
+              router.push('/appointments')
+            }
             icon={<AppointmentsIcon />}
           />
 

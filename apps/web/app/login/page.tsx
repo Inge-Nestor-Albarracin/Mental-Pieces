@@ -42,7 +42,11 @@ export default function LoginPage() {
         result.accessToken,
       );
 
-      router.push('/dashboard');
+      router.replace(
+        result.user.role === 'PSYCHOLOGIST'
+          ? '/psychologist/dashboard'
+          : '/dashboard',
+      );
     } catch (error) {
       if (error instanceof Error) {
         setError(error.message);

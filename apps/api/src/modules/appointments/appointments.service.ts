@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
 import {
   AppointmentStatus,
@@ -12,35 +13,22 @@ import {
   WeekDay,
 } from '../../../generated/prisma/client';
 
-import {
-  PrismaService,
-} from '../../database/prisma.service';
+import { PrismaService } from '../../database/prisma.service';
 
-import {
-  CancelAppointmentDto,
-} from './dto/cancel-appointment.dto';
+import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 
-import {
-  CreateAppointmentDto,
-} from './dto/create-appointment.dto';
+import { CreateAppointmentDto } from './dto/create-appointment.dto';
 
-import {
-  RescheduleAppointmentDto,
-} from './dto/reschedule-appointment.dto';
+import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 
 const APPOINTMENT_DURATION_MINUTES = 60;
 const BUSINESS_TIMEZONE = 'America/Bogota';
 
 @Injectable()
 export class AppointmentsService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(
-    patientUserId: string,
-    dto: CreateAppointmentDto,
-  ) {
+  async create(patientUserId: string, dto: CreateAppointmentDto) {
     const patient = await this.prisma.patient.findUnique({
       where: {
         userId: patientUserId,
@@ -51,15 +39,11 @@ export class AppointmentsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(
-        'No se encontró el perfil del paciente.',
-      );
+      throw new NotFoundException('No se encontró el perfil del paciente.');
     }
 
     const psychologistId = dto.psychologistId.trim();
-    const appointmentDate = this.normalizeCalendarDate(
-      dto.appointmentDate,
-    );
+    const appointmentDate = this.normalizeCalendarDate(dto.appointmentDate);
     const startMinute = this.timeToMinutes(dto.startTime);
     const endMinute = startMinute + APPOINTMENT_DURATION_MINUTES;
 
@@ -84,9 +68,7 @@ export class AppointmentsService {
       psychologist.role !== UserRole.PSYCHOLOGIST ||
       !psychologist.isActive
     ) {
-      throw new NotFoundException(
-        'El psicólogo no existe o no está activo.',
-      );
+      throw new NotFoundException('El psicólogo no existe o no está activo.');
     }
 
     this.assertFutureDateAndTime(appointmentDate, startMinute);
@@ -180,8 +162,7 @@ export class AppointmentsService {
         status: created.status,
         psychologist: {
           id: psychologist.id,
-          fullName:
-            psychologist.staffProfile?.fullName ?? null,
+          fullName: psychologist.staffProfile?.fullName ?? null,
         },
       };
     });
@@ -198,9 +179,7 @@ export class AppointmentsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(
-        'No se encontró el perfil del paciente.',
-      );
+      throw new NotFoundException('No se encontró el perfil del paciente.');
     }
 
     const appointments = await this.prisma.appointment.findMany({
@@ -243,10 +222,8 @@ export class AppointmentsService {
       status: item.status,
       psychologist: {
         id: item.psychologist.id,
-        fullName:
-          item.psychologist.staffProfile?.fullName ?? null,
-        position:
-          item.psychologist.staffProfile?.position ?? null,
+        fullName: item.psychologist.staffProfile?.fullName ?? null,
+        position: item.psychologist.staffProfile?.position ?? null,
       },
     }));
   }
@@ -266,9 +243,7 @@ export class AppointmentsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(
-        'No se encontró el perfil del paciente.',
-      );
+      throw new NotFoundException('No se encontró el perfil del paciente.');
     }
 
     const appointment = await this.prisma.appointment.findUnique({
@@ -296,25 +271,39 @@ export class AppointmentsService {
 
     const reason = dto.reason?.trim();
 
-    const updated = await this.prisma.appointment.update({
-      where: {
-        id: appointment.id,
-      },
-      data: {
-        status: AppointmentStatus.CANCELLED,
-        cancelledAt: new Date(),
-        cancellationReason: reason || null,
-      },
-      select: {
-        id: true,
-        appointmentDate: true,
-        startMinute: true,
-        endMinute: true,
-        status: true,
-        cancelledAt: true,
-        cancellationReason: true,
-      },
-    });
+    const updated = await this.prisma.appointment
+      .update({
+        where: {
+          id: appointment.id,
+          patientId: patient.id,
+          status: AppointmentStatus.SCHEDULED,
+        },
+        data: {
+          status: AppointmentStatus.CANCELLED,
+          cancelledAt: new Date(),
+          cancellationReason: reason || null,
+        },
+        select: {
+          id: true,
+          appointmentDate: true,
+          startMinute: true,
+          endMinute: true,
+          status: true,
+          cancelledAt: true,
+          cancellationReason: true,
+        },
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        ) {
+          throw new BadRequestException(
+            'Solo una cita programada puede cancelarse.',
+          );
+        }
+        throw error;
+      });
 
     return {
       id: updated.id,
@@ -342,9 +331,7 @@ export class AppointmentsService {
     });
 
     if (!patient) {
-      throw new NotFoundException(
-        'No se encontró el perfil del paciente.',
-      );
+      throw new NotFoundException('No se encontró el perfil del paciente.');
     }
 
     const appointment = await this.prisma.appointment.findUnique({
@@ -373,9 +360,7 @@ export class AppointmentsService {
       );
     }
 
-    const newDate = this.normalizeCalendarDate(
-      dto.appointmentDate,
-    );
+    const newDate = this.normalizeCalendarDate(dto.appointmentDate);
     const newStartMinute = this.timeToMinutes(dto.startTime);
     const newEndMinute = newStartMinute + APPOINTMENT_DURATION_MINUTES;
 
@@ -394,88 +379,105 @@ export class AppointmentsService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const conflict = await tx.appointment.findFirst({
-        where: {
-          psychologistId: appointment.psychologistId,
-          appointmentDate: newDate,
-          status: AppointmentStatus.SCHEDULED,
-          id: {
-            not: appointment.id,
+    return this.prisma
+      .$transaction(async (tx) => {
+        const conflict = await tx.appointment.findFirst({
+          where: {
+            psychologistId: appointment.psychologistId,
+            appointmentDate: newDate,
+            status: AppointmentStatus.SCHEDULED,
+            id: {
+              not: appointment.id,
+            },
+            startMinute: {
+              lt: newEndMinute,
+            },
+            endMinute: {
+              gt: newStartMinute,
+            },
           },
-          startMinute: {
-            lt: newEndMinute,
+          select: {
+            id: true,
           },
-          endMinute: {
-            gt: newStartMinute,
+        });
+
+        if (conflict) {
+          throw new ConflictException(
+            'El nuevo horario ya está ocupado por otra cita del psicólogo.',
+          );
+        }
+
+        const patientConflict = await tx.appointment.findFirst({
+          where: {
+            patientId: patient.id,
+            appointmentDate: newDate,
+            status: AppointmentStatus.SCHEDULED,
+            id: {
+              not: appointment.id,
+            },
+            startMinute: {
+              lt: newEndMinute,
+            },
+            endMinute: {
+              gt: newStartMinute,
+            },
           },
-        },
-        select: {
-          id: true,
-        },
+          select: {
+            id: true,
+          },
+        });
+
+        if (patientConflict) {
+          throw new ConflictException(
+            'Ya tienes otra cita programada en ese horario.',
+          );
+        }
+
+        const updated = await tx.appointment.update({
+          where: {
+            id: appointment.id,
+            patientId: patient.id,
+            psychologistId: appointment.psychologistId,
+            status: AppointmentStatus.SCHEDULED,
+            appointmentDate: appointment.appointmentDate,
+            startMinute: appointment.startMinute,
+          },
+          data: {
+            appointmentDate: newDate,
+            startMinute: newStartMinute,
+            endMinute: newEndMinute,
+            status: AppointmentStatus.SCHEDULED,
+            cancelledAt: null,
+            cancellationReason: null,
+          },
+          select: {
+            id: true,
+            appointmentDate: true,
+            startMinute: true,
+            endMinute: true,
+            status: true,
+          },
+        });
+
+        return {
+          id: updated.id,
+          appointmentDate: updated.appointmentDate,
+          startTime: this.minutesToTime(updated.startMinute),
+          endTime: this.minutesToTime(updated.endMinute),
+          status: updated.status,
+        };
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        ) {
+          throw new BadRequestException(
+            'La cita cambió y no puede reagendarse.',
+          );
+        }
+        throw error;
       });
-
-      if (conflict) {
-        throw new ConflictException(
-          'El nuevo horario ya está ocupado por otra cita del psicólogo.',
-        );
-      }
-
-      const patientConflict = await tx.appointment.findFirst({
-        where: {
-          patientId: patient.id,
-          appointmentDate: newDate,
-          status: AppointmentStatus.SCHEDULED,
-          id: {
-            not: appointment.id,
-          },
-          startMinute: {
-            lt: newEndMinute,
-          },
-          endMinute: {
-            gt: newStartMinute,
-          },
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (patientConflict) {
-        throw new ConflictException(
-          'Ya tienes otra cita programada en ese horario.',
-        );
-      }
-
-      const updated = await tx.appointment.update({
-        where: {
-          id: appointment.id,
-        },
-        data: {
-          appointmentDate: newDate,
-          startMinute: newStartMinute,
-          endMinute: newEndMinute,
-          status: AppointmentStatus.SCHEDULED,
-          cancelledAt: null,
-          cancellationReason: null,
-        },
-        select: {
-          id: true,
-          appointmentDate: true,
-          startMinute: true,
-          endMinute: true,
-          status: true,
-        },
-      });
-
-      return {
-        id: updated.id,
-        appointmentDate: updated.appointmentDate,
-        startTime: this.minutesToTime(updated.startMinute),
-        endTime: this.minutesToTime(updated.endMinute),
-        status: updated.status,
-      };
-    });
   }
 
   async getPsychologistAgenda(psychologistUserId: string) {
@@ -546,9 +548,7 @@ export class AppointmentsService {
     date: string,
   ) {
     if (!psychologistId?.trim()) {
-      throw new BadRequestException(
-        'Debe indicarse psychologistId.',
-      );
+      throw new BadRequestException('Debe indicarse psychologistId.');
     }
 
     const doNotUsePatientIdentity = await this.prisma.user.findUnique({
@@ -588,23 +588,22 @@ export class AppointmentsService {
       psychologist.role !== UserRole.PSYCHOLOGIST ||
       !psychologist.isActive
     ) {
-      throw new NotFoundException(
-        'El psicólogo no existe o no está activo.',
-      );
+      throw new NotFoundException('El psicólogo no existe o no está activo.');
     }
 
     const normalizedDate = this.normalizeCalendarDate(date);
     const dayOfWeek = this.getWeekDayFromDate(normalizedDate);
-    const availabilityBlocks = await this.prisma.psychologistAvailability.findMany({
-      where: {
-        psychologistId,
-        dayOfWeek,
-        isActive: true,
-      },
-      orderBy: {
-        startMinute: 'asc',
-      },
-    });
+    const availabilityBlocks =
+      await this.prisma.psychologistAvailability.findMany({
+        where: {
+          psychologistId,
+          dayOfWeek,
+          isActive: true,
+        },
+        orderBy: {
+          startMinute: 'asc',
+        },
+      });
 
     const occupied = await this.prisma.appointment.findMany({
       where: {
@@ -626,12 +625,8 @@ export class AppointmentsService {
     for (const block of availabilityBlocks) {
       let slotStart = block.startMinute;
 
-      while (
-        slotStart + APPOINTMENT_DURATION_MINUTES <=
-        block.endMinute
-      ) {
-        const slotEnd =
-          slotStart + APPOINTMENT_DURATION_MINUTES;
+      while (slotStart + APPOINTMENT_DURATION_MINUTES <= block.endMinute) {
+        const slotEnd = slotStart + APPOINTMENT_DURATION_MINUTES;
 
         const isPastSlot =
           normalizedDate < currentBogotaDate ||
@@ -657,26 +652,19 @@ export class AppointmentsService {
 
   private normalizeCalendarDate(date: string): string {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      throw new BadRequestException(
-        'La fecha debe tener formato YYYY-MM-DD.',
-      );
+      throw new BadRequestException('La fecha debe tener formato YYYY-MM-DD.');
     }
 
     const parsed = new Date(`${date}T00:00:00-05:00`);
 
     if (Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException(
-        'La fecha no es válida.',
-      );
+      throw new BadRequestException('La fecha no es válida.');
     }
 
     return date;
   }
 
-  private assertFutureDateAndTime(
-    date: string,
-    startMinute: number,
-  ) {
+  private assertFutureDateAndTime(date: string, startMinute: number) {
     const now = new Date(
       new Date().toLocaleString('en-US', {
         timeZone: BUSINESS_TIMEZONE,
@@ -693,9 +681,7 @@ export class AppointmentsService {
     }
 
     if (date === today && startMinute <= currentMinutes) {
-      throw new BadRequestException(
-        'La cita debe estar en el futuro.',
-      );
+      throw new BadRequestException('La cita debe estar en el futuro.');
     }
   }
 
@@ -707,22 +693,22 @@ export class AppointmentsService {
   ): Promise<boolean> {
     const dayOfWeek = this.getWeekDayFromDate(appointmentDate);
 
-    const availabilityBlocks = await this.prisma.psychologistAvailability.findMany({
-      where: {
-        psychologistId,
-        dayOfWeek,
-        isActive: true,
-      },
-      select: {
-        startMinute: true,
-        endMinute: true,
-      },
-    });
+    const availabilityBlocks =
+      await this.prisma.psychologistAvailability.findMany({
+        where: {
+          psychologistId,
+          dayOfWeek,
+          isActive: true,
+        },
+        select: {
+          startMinute: true,
+          endMinute: true,
+        },
+      });
 
     return availabilityBlocks.some(
       (block) =>
-        block.startMinute <= startMinute &&
-        block.endMinute >= endMinute,
+        block.startMinute <= startMinute && block.endMinute >= endMinute,
     );
   }
 
@@ -758,10 +744,7 @@ export class AppointmentsService {
       hour12: false,
     });
 
-    const [hours, minutes] = formatter
-      .format(date)
-      .split(':')
-      .map(Number);
+    const [hours, minutes] = formatter.format(date).split(':').map(Number);
 
     return hours * 60 + minutes;
   }
@@ -775,9 +758,7 @@ export class AppointmentsService {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
 
-    return `${hours
-      .toString()
-      .padStart(2, '0')}:${minutes
+    return `${hours.toString().padStart(2, '0')}:${minutes
       .toString()
       .padStart(2, '0')}`;
   }
