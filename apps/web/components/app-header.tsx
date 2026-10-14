@@ -4,13 +4,21 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
-export function AppHeader({ role = 'PATIENT' }: { role?: 'PATIENT' | 'PSYCHOLOGIST' }) {
+const HOME: Record<'PATIENT' | 'PSYCHOLOGIST' | 'ADMIN', string> = {
+  PATIENT: '/dashboard',
+  PSYCHOLOGIST: '/psychologist/dashboard',
+  ADMIN: '/admin/dashboard',
+};
+
+export function AppHeader({ role = 'PATIENT' }: { role?: 'PATIENT' | 'PSYCHOLOGIST' | 'ADMIN' }) {
   const router = useRouter();
   const pathname = usePathname();
-  const home = role === 'PSYCHOLOGIST' ? '/psychologist/dashboard' : '/dashboard';
+  const home = HOME[role];
   const links = role === 'PSYCHOLOGIST'
-    ? [[home, 'Inicio'], ['/psychologist/appointments', 'Mi agenda'], ['/psychologist/availability', 'Mi disponibilidad']]
-    : [[home, 'Inicio'], ['/appointments', 'Mis citas'], ['/appointments/new', 'Agendar cita'], ['/profile', 'Perfil']];
+    ? [[home, 'Inicio'], ['/psychologist/patients', 'Mis pacientes'], ['/psychologist/appointments', 'Mi agenda'], ['/psychologist/availability', 'Mi disponibilidad']]
+    : role === 'ADMIN'
+      ? [[home, 'Inicio'], ['/admin/clinical-assignments', 'Asignaciones clínicas']]
+      : [[home, 'Inicio'], ['/appointments', 'Mis citas'], ['/appointments/new', 'Agendar cita'], ['/profile', 'Perfil']];
 
   function logout() {
     sessionStorage.removeItem('accessToken');
@@ -38,7 +46,7 @@ export function AppHeader({ role = 'PATIENT' }: { role?: 'PATIENT' | 'PSYCHOLOGI
 
         <nav aria-label="Navegación principal" className="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
           {links.map(([href, label]) => (
-            <Link key={href} href={href} aria-current={pathname === href ? 'page' : undefined}
+            <Link key={href} href={href} aria-current={pathname === href || (href !== home && pathname.startsWith(`${href}/`)) ? 'page' : undefined}
               className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium text-[#4A3F38] transition hover:bg-[#F1ECE6] aria-[current=page]:bg-[#F1ECE6]">
               {label}
             </Link>

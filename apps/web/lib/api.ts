@@ -229,29 +229,124 @@ export interface PsychologistOption {
   };
 }
 
-export async function getPsychologists(
+// Throws ApiError (an Error) so callers can also distinguish HTTP status.
+export function getPsychologists(
   token: string,
 ): Promise<PsychologistOption[]> {
-  const response = await fetch(
-    `${API_URL}/staff/psychologists`,
+  return authenticatedRequest(token, '/staff/psychologists', 'No fue posible cargar los psicólogos.');
+}
+
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+function pageQuery(page: number): string {
+  return `?page=${encodeURIComponent(String(page))}`;
+}
+
+// --- Clinical (PSYCHOLOGIST). Identity always comes from the JWT on the server. ---
+
+export interface ClinicalPatient {
+  id: string;
+  fullName: string | null;
+}
+
+export interface ClinicalNote {
+  id: string;
+  content: string;
+  appointmentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateClinicalNotePayload {
+  content: string;
+  appointmentId?: string;
+}
+
+export function getClinicalPatients(token: string, page = 1): Promise<Page<ClinicalPatient>> {
+  return authenticatedRequest(token, `/clinical/patients${pageQuery(page)}`, 'No fue posible cargar tus pacientes.');
+}
+
+export function getClinicalNotes(
+  token: string,
+  patientId: string,
+  page = 1,
+): Promise<Page<ClinicalNote>> {
+  return authenticatedRequest(
+    token,
+    `/clinical/patients/${encodeURIComponent(patientId)}/notes${pageQuery(page)}`,
+    'No fue posible cargar las notas clínicas.',
+  );
+}
+
+// patientId belongs only to the URL. The body carries content and, optionally, appointmentId.
+export function createClinicalNote(
+  token: string,
+  patientId: string,
+  { content, appointmentId }: CreateClinicalNotePayload,
+): Promise<ClinicalNote> {
+  return authenticatedRequest(
+    token,
+    `/clinical/patients/${encodeURIComponent(patientId)}/notes`,
+    'No fue posible guardar la nota clínica.',
     {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      method: 'POST',
+      body: JSON.stringify(appointmentId ? { content, appointmentId } : { content }),
     },
   );
+}
 
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible cargar los psicólogos.',
-      ),
-    );
-  }
+// --- Clinical assignments (ADMIN). Administrative data only, never notes. ---
 
-  return response.json();
+export interface AssignablePatient {
+  id: string;
+  fullName: string | null;
+  mrn: string;
+}
+
+export interface CareAssignment {
+  id: string;
+  isActive: boolean;
+  assignedAt: string;
+  endedAt: string | null;
+  patient: { id: string; fullName: string | null };
+  psychologist: { id: string; fullName: string | null };
+}
+
+export interface CreateCareAssignmentPayload {
+  patientId: string;
+  psychologistId: string;
+}
+
+export function getAssignablePatients(token: string, page = 1): Promise<Page<AssignablePatient>> {
+  return authenticatedRequest(token, `/clinical/admin/patients${pageQuery(page)}`, 'No fue posible cargar los pacientes.');
+}
+
+export function getCareAssignments(token: string, page = 1): Promise<Page<CareAssignment>> {
+  return authenticatedRequest(token, `/clinical/assignments${pageQuery(page)}`, 'No fue posible cargar las asignaciones.');
+}
+
+export async function createCareAssignment(
+  token: string,
+  { patientId, psychologistId }: CreateCareAssignmentPayload,
+): Promise<void> {
+  await authenticatedRequest<unknown>(token, '/clinical/assignments', 'No fue posible crear la asignación.', {
+    method: 'POST',
+    body: JSON.stringify({ patientId, psychologistId }),
+  });
+}
+
+export async function endCareAssignment(token: string, id: string): Promise<void> {
+  await authenticatedRequest<unknown>(
+    token,
+    `/clinical/assignments/${encodeURIComponent(id)}/end`,
+    'No fue posible finalizar la asignación.',
+    { method: 'PATCH' },
+  );
 }
 
 export interface CreateAppointmentPayload {

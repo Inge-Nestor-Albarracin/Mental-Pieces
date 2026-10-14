@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import { login } from '../../lib/api';
+import { homeForRole } from '../../components/role-gate';
 import Image from 'next/image';
 
 export default function LoginPage() {
@@ -43,9 +44,7 @@ export default function LoginPage() {
       );
 
       router.replace(
-        result.user.role === 'PSYCHOLOGIST'
-          ? '/psychologist/dashboard'
-          : '/dashboard',
+        homeForRole(result.user.role),
       );
     } catch (error) {
       if (error instanceof Error) {

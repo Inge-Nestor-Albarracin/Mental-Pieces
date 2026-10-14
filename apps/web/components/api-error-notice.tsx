@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { useEffect } from 'react';
 import { ApiError } from '../lib/api';
 
-export function ApiErrorNotice({ error, onRetry }: { error: Error; onRetry?: () => void }) {
+// `messages` lets each screen explain 404/409 in its own context (defaults match availability).
+export function ApiErrorNotice({ error, onRetry, messages }: {
+  error: Error;
+  onRetry?: () => void;
+  messages?: Partial<Record<404 | 409, string>>;
+}) {
   const status = error instanceof ApiError ? error.status : undefined;
 
   useEffect(() => {
@@ -16,9 +21,9 @@ export function ApiErrorNotice({ error, onRetry }: { error: Error; onRetry?: () 
     : status === 403
       ? 'No tienes permiso para acceder a esta sección.'
       : status === 409
-        ? 'Este horario se superpone con otro bloque de disponibilidad. Revisa el día y las horas.'
+        ? messages?.[409] ?? 'Este horario se superpone con otro bloque de disponibilidad. Revisa el día y las horas.'
         : status === 404
-          ? 'El horario ya no está disponible. Actualiza la lista antes de continuar.'
+          ? messages?.[404] ?? 'El horario ya no está disponible. Actualiza la lista antes de continuar.'
           : error.message;
 
   return (

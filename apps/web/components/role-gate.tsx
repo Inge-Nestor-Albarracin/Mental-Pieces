@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import { ApiError, getCurrentUser, type UserRole } from '../lib/api';
 import { ApiErrorNotice } from './api-error-notice';
 
+export function homeForRole(role: UserRole): string {
+  return role === 'PSYCHOLOGIST' ? '/psychologist/dashboard'
+    : role === 'ADMIN' ? '/admin/dashboard'
+      : '/dashboard';
+}
+
 // Navigation/UX only. Each backend endpoint still enforces role and ownership.
 export function RoleGate({ role, children }: { role: UserRole; children: ReactNode }) {
   const router = useRouter();
@@ -22,8 +28,8 @@ export function RoleGate({ role, children }: { role: UserRole; children: ReactNo
         if (!active) return;
         if (user.role === role) {
           setAllowed(true);
-        } else if (user.role === 'PATIENT' || user.role === 'PSYCHOLOGIST') {
-          router.replace(user.role === 'PATIENT' ? '/dashboard' : '/psychologist/dashboard');
+        } else if (user.role !== 'STAFF') {
+          router.replace(homeForRole(user.role));
         } else {
           setError(new ApiError(403, 'Sin acceso a este portal.'));
         }

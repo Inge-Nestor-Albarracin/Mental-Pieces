@@ -17,12 +17,77 @@ const RELATIONSHIP_SELECT = {
   endedAt: true,
 } as const;
 
+const ADMIN_PAGE_SIZE = 50;
+
+// Administrative view: names only. No notes, contact data or profiles.
+const ASSIGNMENT_LIST_SELECT = {
+  id: true,
+  isActive: true,
+  assignedAt: true,
+  endedAt: true,
+  patient: { select: { id: true, fullName: true } },
+  psychologist: {
+    select: { id: true, staffProfile: { select: { fullName: true } } },
+  },
+} as const;
+
 @Injectable()
 export class CareRelationshipsService {
   constructor(
     private readonly transactions: ClinicalTransactionService,
     private readonly access: ClinicalAccessService,
   ) {}
+
+  listAssignments(actorUserId: string, page: number) {
+    return this.transactions.run(async (tx) => {
+      await this.access.assertActiveAdmin(tx, actorUserId);
+      const relationships = await tx.careRelationship.findMany({
+        orderBy: [{ isActive: 'desc' }, { assignedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * ADMIN_PAGE_SIZE,
+        take: ADMIN_PAGE_SIZE + 1,
+        select: ASSIGNMENT_LIST_SELECT,
+      });
+      return {
+        items: relationships.slice(0, ADMIN_PAGE_SIZE).map((item) => ({
+          id: item.id,
+          isActive: item.isActive,
+          assignedAt: item.assignedAt,
+          endedAt: item.endedAt,
+          patient: {
+            id: item.patient.id,
+            fullName: item.patient.fullName ?? null,
+          },
+          psychologist: {
+            id: item.psychologist.id,
+            fullName: item.psychologist.staffProfile?.fullName ?? null,
+          },
+        })),
+        page,
+        pageSize: ADMIN_PAGE_SIZE,
+        hasMore: relationships.length > ADMIN_PAGE_SIZE,
+      };
+    });
+  }
+
+  // Patients that can receive an assignment: active PATIENT accounts only.
+  listAssignablePatients(actorUserId: string, page: number) {
+    return this.transactions.run(async (tx) => {
+      await this.access.assertActiveAdmin(tx, actorUserId);
+      const patients = await tx.patient.findMany({
+        where: { user: { role: UserRole.PATIENT, isActive: true } },
+        orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * ADMIN_PAGE_SIZE,
+        take: ADMIN_PAGE_SIZE + 1,
+        select: { id: true, fullName: true, mrn: true },
+      });
+      return {
+        items: patients.slice(0, ADMIN_PAGE_SIZE),
+        page,
+        pageSize: ADMIN_PAGE_SIZE,
+        hasMore: patients.length > ADMIN_PAGE_SIZE,
+      };
+    });
+  }
 
   create(actorUserId: string, dto: CreateCareRelationshipDto) {
     return this.transactions.run(async (tx) => {

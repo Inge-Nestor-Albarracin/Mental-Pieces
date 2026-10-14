@@ -126,11 +126,14 @@ del SQL sobre PostgreSQL 11 y anteriores no aplica a esta base.
 | POST `/clinical/patients/:patientId/notes` | PSYCHOLOGIST asignado | `{ content, appointmentId? }` | Nota creada con esos mismos cinco campos |
 | POST `/clinical/assignments` | ADMIN activo | `{ patientId, psychologistId }` | `{ id, patientId, psychologistId, isActive, assignedAt, endedAt }` |
 | PATCH `/clinical/assignments/:id/end` | ADMIN activo | Cuerpo vacío | Relación finalizada con esos mismos campos |
+| GET `/clinical/assignments?page=1` | ADMIN activo | page opcional | Página (50) de `{ id, isActive, assignedAt, endedAt, patient: { id, fullName }, psychologist: { id, fullName } }` |
+| GET `/clinical/admin/patients?page=1` | ADMIN activo | page opcional | Página (50) de `{ id, fullName, mrn }` de pacientes con cuenta PATIENT activa |
 | PATCH `/appointments/psychologist/me/:id/complete` | PSYCHOLOGIST propietario activo | Cuerpo y query vacíos | `{ id, appointmentDate, startTime, endTime, status: "COMPLETED" }` |
 | PATCH `/appointments/psychologist/me/:id/no-show` | PSYCHOLOGIST propietario activo | Cuerpo y query vacíos | `{ id, appointmentDate, startTime, endTime, status: "NO_SHOW" }` |
 
-No se exponen mrn, email, teléfono, dirección, género, passwordHash ni perfiles
-completos. La lista de pacientes nunca incluye notas. Las respuestas clínicas y
+No se exponen email, teléfono, dirección, género, passwordHash ni perfiles
+completos. `mrn` solo aparece en el listado ADMIN de pacientes asignables, para
+distinguir homónimos. Ningún listado incluye notas. Las respuestas clínicas y
 de finalización declaran `Cache-Control: no-store`.
 
 El contenido de una nota se recorta con trim y debe contener entre 1 y 10000
@@ -287,5 +290,66 @@ manual del código. Este cierre no incluye commit, push ni merge.
 - **Versionado/corrección:** decidir cómo corregir notas conservando trazabilidad,
   retención y acceso posterior al cierre antes de añadir edición o frontend.
 - No se auditan lecturas ni existe protección externa contra alteración de la
-  auditoría. No se implementaron diagnósticos, medicación, IA, archivos, firmas,
-  teleconsulta ni pantallas clínicas.
+  auditoría. No se implementaron diagnósticos, medicación, IA, archivos, firmas
+  ni teleconsulta.
+- **JWT en sessionStorage:** sigue siendo temporal; evaluar cookie HttpOnly antes
+  de producción. No se movió a localStorage.
+
+## Vertical slice clínico en frontend (2026-10-14)
+
+| Ruta | Rol (UX; el backend vuelve a autorizar) | Consume |
+| --- | --- | --- |
+| `/admin/dashboard` | ADMIN | — |
+| `/admin/clinical-assignments` | ADMIN | `GET /clinical/admin/patients`, `GET /staff/psychologists`, `GET/POST /clinical/assignments`, `PATCH /clinical/assignments/:id/end` |
+| `/psychologist/patients` | PSYCHOLOGIST | `GET /clinical/patients` |
+| `/psychologist/patients/[patientId]` | PSYCHOLOGIST | `GET/POST /clinical/patients/:patientId/notes`, `GET /appointments/psychologist/me` |
+
+- La UI ADMIN no importa ni enlaza componentes o rutas de notas.
+- El body de una nota es `{ content }` o `{ content, appointmentId }`; patientId solo
+  va en la URL. El selector de cita filtra en cliente COMPLETED del mismo paciente
+  sin nota cargada, solo como UX: la API revalida todo.
+- 401/403/404 en la vista clínica borran del estado notas, borrador, citas y nombre
+  y muestran "No fue posible acceder al recurso clínico." (404 sin más detalle).
+  La vista revalida al volver a la pestaña. 409 en nota: "Esta cita ya tiene una
+  nota clínica asociada."
+- Las notas viven solo en estado de React: sin storage ni logs.
+
+## UTF-8 y PowerShell (diagnóstico 2026-10-14)
+
+Fuentes versionadas: UTF-8 válido, sin `�`/`Ã`. API: `Content-Type: application/json;
+charset=utf-8` y bytes `c3 a1` para "á". Next: `text/html; charset=utf-8` con
+`<meta charSet="utf-8">` automático. No hace falta código de encoding en la app.
+
+Windows PowerShell 5.1 sí corrompe datos al escribir contra la API:
+
+| Origen | Bytes enviados por "ó" | Resultado guardado |
+| --- | --- | --- |
+| `Invoke-RestMethod -ContentType 'application/json'` (sin charset) | `f3` (Latin-1) | `�` (U+FFFD) |
+| Texto canalizado a `curl.exe`/`psql` con `$OutputEncoding` ASCII (default 5.1) | `3f` | `?` literal, irrecuperable |
+| `.ps1` guardado UTF-8 sin BOM y ejecutado en 5.1 | `c3 83 c2 b3` | `Ã³` |
+
+Procedimiento de desarrollo (no es dependencia de producción):
+
+```powershell
+chcp 65001
+[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+$OutputEncoding           = [System.Text.UTF8Encoding]::new()
+# Al enviar JSON: declarar charset o enviar bytes UTF-8
+Invoke-RestMethod -Method Post -ContentType 'application/json; charset=utf-8' -Body $json ...
+```
+
+Alternativas: PowerShell 7 (UTF-8 por defecto) o guardar `.ps1` como UTF-8 con BOM.
+
+Verificación de solo lectura en la DB (no imprime datos clínicos):
+
+```sql
+SHOW server_encoding;
+SHOW client_encoding;
+SELECT id, "fullName", encode(convert_to("fullName", 'UTF8'), 'hex')
+FROM "StaffProfile";
+-- c3b3 = ó correcto · efbfbd = U+FFFD (dañado) · 3f = '?' (carácter perdido)
+```
+
+Registros dañados: corregir solo registros de desarrollo cuyo valor correcto sea
+inequívoco, por id, nunca con `replace(...)` masivo ni sobre contenido clínico.

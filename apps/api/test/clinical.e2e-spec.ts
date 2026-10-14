@@ -16,6 +16,7 @@ import { ClinicalAccessService } from '../src/modules/clinical/clinical-access.s
 import { ClinicalTransactionService } from '../src/modules/clinical/clinical-transaction.service';
 import { CareRelationshipsController } from '../src/modules/clinical/care-relationships.controller';
 import { CareRelationshipsService } from '../src/modules/clinical/care-relationships.service';
+import { ClinicalAdminController } from '../src/modules/clinical/clinical-admin.controller';
 
 const patientId = `c${'1'.repeat(24)}`;
 const psychologistId = `c${'2'.repeat(24)}`;
@@ -47,7 +48,10 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
   let jwt: JwtService;
   const tx = {
     user: { findFirst: jest.fn() },
-    patient: { findFirst: jest.fn() },
+    patient: {
+      findFirst: jest.fn(),
+      findMany: jest.fn<Promise<unknown[]>, [Prisma.PatientFindManyArgs]>(),
+    },
     careRelationship: {
       findFirst: jest.fn(),
       findMany: jest.fn<
@@ -82,7 +86,11 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
       imports: [
         JwtModule.register({ secret: randomBytes(32).toString('hex') }),
       ],
-      controllers: [ClinicalController, CareRelationshipsController],
+      controllers: [
+        ClinicalController,
+        CareRelationshipsController,
+        ClinicalAdminController,
+      ],
       providers: [
         ClinicalService,
         CareRelationshipsService,
@@ -111,6 +119,9 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
       Promise.resolve({ id: query.where.id }),
     );
     tx.patient.findFirst.mockResolvedValue({ id: patientId });
+    tx.patient.findMany.mockResolvedValue([
+      { id: patientId, fullName: 'Paciente sintético', mrn: 'MP-2026-TEST' },
+    ]);
     tx.careRelationship.findFirst.mockResolvedValue({ id: relationshipId });
     tx.careRelationship.findMany.mockResolvedValue([
       { patient: { id: patientId, fullName: 'Nombre sintético' } },
@@ -642,5 +653,169 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
     } finally {
       log.mockRestore();
     }
+  });
+
+  describe('ADMIN assignment lookups', () => {
+    const adminPaths = ['/clinical/assignments', '/clinical/admin/patients'];
+
+    it('rejects missing tokens before accessing Prisma', async () => {
+      for (const path of adminPaths) {
+        await request(app.getHttpServer()).get(path).expect(401);
+      }
+      expect(database.$transaction).not.toHaveBeenCalled();
+    });
+
+    it.each([UserRole.PATIENT, UserRole.STAFF, UserRole.PSYCHOLOGIST])(
+      '%s cannot list assignments or assignable patients',
+      async (role) => {
+        const auth = session(role);
+        for (const path of adminPaths) {
+          await request(app.getHttpServer())
+            .get(path)
+            .set('Authorization', auth)
+            .expect(403);
+        }
+        expect(database.$transaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('ADMIN lists assignments with names only and never selects notes', async () => {
+      tx.careRelationship.findMany.mockResolvedValue([
+        {
+          id: relationshipId,
+          isActive: false,
+          assignedAt: fixedDate,
+          endedAt: fixedDate,
+          patient: { id: patientId, fullName: null },
+          psychologist: {
+            id: psychologistId,
+            staffProfile: { fullName: 'Psicólogo sintético' },
+          },
+        },
+      ]);
+      const response = await request(app.getHttpServer())
+        .get('/clinical/assignments')
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+      expect(response.body).toEqual({
+        items: [
+          {
+            id: relationshipId,
+            isActive: false,
+            assignedAt: fixedDate.toISOString(),
+            endedAt: fixedDate.toISOString(),
+            patient: { id: patientId, fullName: null },
+            psychologist: {
+              id: psychologistId,
+              fullName: 'Psicólogo sintético',
+            },
+          },
+        ],
+        page: 1,
+        pageSize: 50,
+        hasMore: false,
+      });
+      const query = tx.careRelationship.findMany.mock.calls[0]?.[0];
+      expect(query?.select).toEqual({
+        id: true,
+        isActive: true,
+        assignedAt: true,
+        endedAt: true,
+        patient: { select: { id: true, fullName: true } },
+        psychologist: {
+          select: { id: true, staffProfile: { select: { fullName: true } } },
+        },
+      });
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /notes|content|email|phone|address|gender|passwordHash/,
+      );
+      expect(tx.user.findFirst).toHaveBeenCalledWith({
+        where: { id: adminId, role: UserRole.ADMIN, isActive: true },
+        select: { id: true },
+      });
+      expect(tx.clinicalSessionNote.findMany).not.toHaveBeenCalled();
+    });
+
+    it('ADMIN lists assignable patients with id, fullName and mrn only', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/clinical/admin/patients?page=2')
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+      expect(response.body).toEqual({
+        items: [
+          {
+            id: patientId,
+            fullName: 'Paciente sintético',
+            mrn: 'MP-2026-TEST',
+          },
+        ],
+        page: 2,
+        pageSize: 50,
+        hasMore: false,
+      });
+      expect(tx.patient.findMany.mock.calls[0]?.[0]).toMatchObject({
+        where: { user: { role: UserRole.PATIENT, isActive: true } },
+        select: { id: true, fullName: true, mrn: true },
+        skip: 50,
+        take: 51,
+      });
+      expect(
+        Object.keys(tx.patient.findMany.mock.calls[0]?.[0]?.select ?? {}),
+      ).toEqual(['id', 'fullName', 'mrn']);
+      expect(tx.clinicalSessionNote.findMany).not.toHaveBeenCalled();
+    });
+
+    it('reports hasMore without returning the extra row', async () => {
+      tx.patient.findMany.mockResolvedValue(
+        Array.from({ length: 51 }, (_, index) => ({
+          id: `c${String(index).padStart(24, '0')}`,
+          fullName: null,
+          mrn: `MP-2026-${index}`,
+        })),
+      );
+      const response = await request(app.getHttpServer())
+        .get('/clinical/admin/patients')
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(200);
+      expect(response.body).toMatchObject({ hasMore: true, pageSize: 50 });
+      expect((response.body as { items: unknown[] }).items).toHaveLength(50);
+    });
+
+    it('rejects an inactive ADMIN on both lookups', async () => {
+      tx.user.findFirst.mockResolvedValue(null);
+      for (const path of adminPaths) {
+        await request(app.getHttpServer())
+          .get(path)
+          .set('Authorization', session(UserRole.ADMIN, adminId))
+          .expect(403);
+      }
+      expect(tx.careRelationship.findMany).not.toHaveBeenCalled();
+      expect(tx.patient.findMany).not.toHaveBeenCalled();
+    });
+
+    it('validates pagination and rejects unknown filters', async () => {
+      const auth = session(UserRole.ADMIN, adminId);
+      for (const path of adminPaths) {
+        await request(app.getHttpServer())
+          .get(`${path}?page=0`)
+          .set('Authorization', auth)
+          .expect(400);
+        await request(app.getHttpServer())
+          .get(`${path}?psychologistId=${psychologistId}`)
+          .set('Authorization', auth)
+          .expect(400);
+      }
+      expect(database.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('ADMIN still cannot read clinical notes of an assigned patient', async () => {
+      await request(app.getHttpServer())
+        .get(notesPath)
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(403);
+      expect(database.$transaction).not.toHaveBeenCalled();
+    });
   });
 });
