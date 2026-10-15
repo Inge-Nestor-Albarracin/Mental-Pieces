@@ -33,6 +33,8 @@ const missingUpdate = () =>
     clientVersion: '7.8.0',
   });
 const actions = ['complete', 'no-show'] as const;
+// Patients may only modify a SCHEDULED appointment that has not started yet.
+const upcoming = { ...initial, appointmentDate: '2998-01-01' };
 
 describe('Appointment lifecycle HTTP (no real database)', () => {
   let app: INestApplication<App>;
@@ -324,6 +326,7 @@ describe('Appointment lifecycle HTTP (no real database)', () => {
   });
 
   it('a stale patient cancellation cannot overwrite a completed appointment', async () => {
+    appointment.findUnique.mockResolvedValue({ ...upcoming });
     appointment.update.mockImplementationOnce(() => {
       row.status = AppointmentStatus.COMPLETED;
       return Promise.reject(missingUpdate());
@@ -334,12 +337,19 @@ describe('Appointment lifecycle HTTP (no real database)', () => {
       .send({})
       .expect(400);
     expect(appointment.update.mock.calls[0]?.[0] as unknown).toMatchObject({
-      where: { id, patientId, status: 'SCHEDULED' },
+      where: {
+        id,
+        patientId,
+        status: 'SCHEDULED',
+        appointmentDate: upcoming.appointmentDate,
+        startMinute: upcoming.startMinute,
+      },
     });
     expect(row.status).toBe('COMPLETED');
   });
 
   it('a stale reschedule cannot reopen a completed appointment', async () => {
+    appointment.findUnique.mockResolvedValue({ ...upcoming });
     appointment.update.mockImplementationOnce(() => {
       row.status = AppointmentStatus.COMPLETED;
       return Promise.reject(missingUpdate());
@@ -355,17 +365,26 @@ describe('Appointment lifecycle HTTP (no real database)', () => {
         patientId,
         psychologistId,
         status: 'SCHEDULED',
-        appointmentDate: initial.appointmentDate,
-        startMinute: initial.startMinute,
+        appointmentDate: upcoming.appointmentDate,
+        startMinute: upcoming.startMinute,
       },
     });
     expect(row.status).toBe('COMPLETED');
   });
 
-  it.each([AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW])(
-    'patient cannot cancel or reschedule %s',
-    async (status) => {
-      appointment.findUnique.mockResolvedValue({ ...initial, status });
+  it.each([
+    ['COMPLETED', AppointmentStatus.COMPLETED, upcoming.appointmentDate],
+    ['NO_SHOW', AppointmentStatus.NO_SHOW, upcoming.appointmentDate],
+    ['CANCELLED', AppointmentStatus.CANCELLED, upcoming.appointmentDate],
+    ['past SCHEDULED', AppointmentStatus.SCHEDULED, initial.appointmentDate],
+  ])(
+    'patient cannot cancel or reschedule a %s appointment',
+    async (_label, status, appointmentDate) => {
+      appointment.findUnique.mockResolvedValue({
+        ...initial,
+        status,
+        appointmentDate,
+      });
       const auth = session(UserRole.PATIENT, 'patient-test-user');
       await request(app.getHttpServer())
         .patch(`/appointments/me/${id}/cancel`)

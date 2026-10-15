@@ -411,142 +411,93 @@ export interface AppointmentSummary {
   };
 }
 
-export async function getMyAppointments(
-  token: string,
-): Promise<AppointmentSummary[]> {
-  const response = await fetch(`${API_URL}/appointments/me`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+// Appointment calls go through authenticatedRequest so the UI can tell 400/401/403/404/409 apart.
 
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible cargar tus citas.',
-      ),
-    );
-  }
-
-  return response.json();
+export function getMyAppointments(token: string): Promise<AppointmentSummary[]> {
+  return authenticatedRequest(token, '/appointments/me', 'No fue posible cargar tus citas.');
 }
 
-export async function getAvailableSlots(
+// psychologistId is the psychologist's User id (PsychologistOption.user.id), never StaffProfile.id.
+export function getAvailableSlots(
   token: string,
   psychologistId: string,
   date: string,
 ): Promise<string[]> {
-  const params = new URLSearchParams({
-    psychologistId,
-    date,
-  });
-
-  const response = await fetch(
-    `${API_URL}/appointments/available-slots?${params.toString()}`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
+  const params = new URLSearchParams({ psychologistId, date });
+  return authenticatedRequest(
+    token,
+    `/appointments/available-slots?${params.toString()}`,
+    'No fue posible consultar los horarios disponibles.',
   );
-
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible consultar los horarios disponibles.',
-      ),
-    );
-  }
-
-  return response.json();
 }
 
-export async function createAppointment(
+export function createAppointment(
   token: string,
-  payload: CreateAppointmentPayload,
-) {
-  const response = await fetch(`${API_URL}/appointments/me`, {
+  { psychologistId, appointmentDate, startTime }: CreateAppointmentPayload,
+): Promise<AppointmentSummary> {
+  return authenticatedRequest(token, '/appointments/me', 'No fue posible crear la cita.', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ psychologistId, appointmentDate, startTime }),
   });
-
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible crear la cita.',
-      ),
-    );
-  }
-
-  return response.json();
 }
 
 export async function cancelAppointment(
   token: string,
   appointmentId: string,
   reason?: string,
-) {
-  const response = await fetch(
-    `${API_URL}/appointments/me/${appointmentId}/cancel`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(reason ? { reason } : {}),
-    },
+): Promise<void> {
+  await authenticatedRequest<unknown>(
+    token,
+    `/appointments/me/${encodeURIComponent(appointmentId)}/cancel`,
+    'No fue posible cancelar la cita.',
+    { method: 'PATCH', body: JSON.stringify(reason ? { reason } : {}) },
   );
-
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible cancelar la cita.',
-      ),
-    );
-  }
-
-  return response.json();
 }
 
 export async function rescheduleAppointment(
   token: string,
   appointmentId: string,
-  payload: {
-    appointmentDate: string;
-    startTime: string;
-  },
-) {
-  const response = await fetch(
-    `${API_URL}/appointments/me/${appointmentId}/reschedule`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    },
+  { appointmentDate, startTime }: { appointmentDate: string; startTime: string },
+): Promise<void> {
+  await authenticatedRequest<unknown>(
+    token,
+    `/appointments/me/${encodeURIComponent(appointmentId)}/reschedule`,
+    'No fue posible reagendar la cita.',
+    { method: 'PATCH', body: JSON.stringify({ appointmentDate, startTime }) },
   );
+}
 
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible reagendar la cita.',
-      ),
-    );
-  }
+export async function completePsychologistAppointment(token: string, id: string): Promise<void> {
+  await authenticatedRequest<unknown>(
+    token,
+    `/appointments/psychologist/me/${encodeURIComponent(id)}/complete`,
+    'No fue posible marcar la cita como realizada.',
+    { method: 'PATCH' },
+  );
+}
 
-  return response.json();
+export async function markPsychologistAppointmentNoShow(token: string, id: string): Promise<void> {
+  await authenticatedRequest<unknown>(
+    token,
+    `/appointments/psychologist/me/${encodeURIComponent(id)}/no-show`,
+    'No fue posible marcar la inasistencia.',
+    { method: 'PATCH' },
+  );
+}
+
+export interface PsychologistWeeklyAvailability {
+  psychologist: { id: string; fullName: string | null; position: string | null };
+  availability: { id: string; dayOfWeek: WeekDay; startTime: string; endTime: string; isActive: boolean }[];
+}
+
+// Weekly blocks of a psychologist (User id). Used to explain which days have slots.
+export function getPsychologistWeeklyAvailability(
+  token: string,
+  psychologistUserId: string,
+): Promise<PsychologistWeeklyAvailability> {
+  return authenticatedRequest(
+    token,
+    `/availability/psychologists/${encodeURIComponent(psychologistUserId)}`,
+    'No fue posible consultar la disponibilidad del psicólogo.',
+  );
 }

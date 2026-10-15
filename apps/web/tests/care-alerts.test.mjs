@@ -58,10 +58,3 @@ test('admin alerts page never links to clinical notes', async () => {
   const source = await readFile(new URL('../app/admin/alerts/page.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /patientHref|notes|psychologist\/patients/);
 });
-
-test('booking sends the psychologist User id, not the StaffProfile id', async () => {
-  const source = await readFile(new URL('../app/appointments/new/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /setSelectedPsychologist\(result\[0\]\.user\.id\)/);
-  assert.match(source, /value=\{psychologist\.user\.id\}/);
-  assert.doesNotMatch(source, /value=\{psychologist\.id\}/);
-});

@@ -7,11 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
-import {
-  AppointmentStatus,
-  UserRole,
-  WeekDay,
-} from '../../../generated/prisma/client';
+import { AppointmentStatus, UserRole } from '../../../generated/prisma/client';
 
 import { PrismaService } from '../../database/prisma.service';
 
@@ -21,8 +17,18 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 
+import {
+  businessNow,
+  hasAppointmentStarted,
+  isCalendarDate,
+  weekDayOf,
+} from './appointment-time';
+
 const APPOINTMENT_DURATION_MINUTES = 60;
-const BUSINESS_TIMEZONE = 'America/Bogota';
+const PAST_APPOINTMENT_MESSAGE =
+  'No puedes agendar una cita en una fecha u hora pasada.';
+const NOT_MODIFIABLE_MESSAGE =
+  'Solo una cita programada que aún no ha comenzado puede modificarse.';
 
 @Injectable()
 export class AppointmentsService {
@@ -254,6 +260,8 @@ export class AppointmentsService {
         id: true,
         patientId: true,
         status: true,
+        appointmentDate: true,
+        startMinute: true,
       },
     });
 
@@ -263,10 +271,14 @@ export class AppointmentsService {
       );
     }
 
-    if (appointment.status !== AppointmentStatus.SCHEDULED) {
-      throw new BadRequestException(
-        'Solo una cita programada puede cancelarse.',
-      );
+    if (
+      appointment.status !== AppointmentStatus.SCHEDULED ||
+      hasAppointmentStarted(
+        appointment.appointmentDate,
+        appointment.startMinute,
+      )
+    ) {
+      throw new BadRequestException(NOT_MODIFIABLE_MESSAGE);
     }
 
     const reason = dto.reason?.trim();
@@ -277,6 +289,9 @@ export class AppointmentsService {
           id: appointment.id,
           patientId: patient.id,
           status: AppointmentStatus.SCHEDULED,
+          // A reschedule after the read invalidates the temporal check.
+          appointmentDate: appointment.appointmentDate,
+          startMinute: appointment.startMinute,
         },
         data: {
           status: AppointmentStatus.CANCELLED,
@@ -298,9 +313,7 @@ export class AppointmentsService {
           error instanceof PrismaClientKnownRequestError &&
           error.code === 'P2025'
         ) {
-          throw new BadRequestException(
-            'Solo una cita programada puede cancelarse.',
-          );
+          throw new BadRequestException(NOT_MODIFIABLE_MESSAGE);
         }
         throw error;
       });
@@ -354,10 +367,14 @@ export class AppointmentsService {
       );
     }
 
-    if (appointment.status !== AppointmentStatus.SCHEDULED) {
-      throw new BadRequestException(
-        'Solo una cita programada puede reagendarse.',
-      );
+    if (
+      appointment.status !== AppointmentStatus.SCHEDULED ||
+      hasAppointmentStarted(
+        appointment.appointmentDate,
+        appointment.startMinute,
+      )
+    ) {
+      throw new BadRequestException(NOT_MODIFIABLE_MESSAGE);
     }
 
     const newDate = this.normalizeCalendarDate(dto.appointmentDate);
@@ -592,7 +609,7 @@ export class AppointmentsService {
     }
 
     const normalizedDate = this.normalizeCalendarDate(date);
-    const dayOfWeek = this.getWeekDayFromDate(normalizedDate);
+    const dayOfWeek = weekDayOf(normalizedDate);
     const availabilityBlocks =
       await this.prisma.psychologistAvailability.findMany({
         where: {
@@ -617,8 +634,7 @@ export class AppointmentsService {
       },
     });
 
-    const currentBogotaDate = this.getBogotaDateString(new Date());
-    const currentBogotaMinutes = this.getBogotaMinutes(new Date());
+    const current = businessNow();
 
     const slots: string[] = [];
 
@@ -628,10 +644,10 @@ export class AppointmentsService {
       while (slotStart + APPOINTMENT_DURATION_MINUTES <= block.endMinute) {
         const slotEnd = slotStart + APPOINTMENT_DURATION_MINUTES;
 
+        // Same rule as creation: a slot is offered only if it has not started.
         const isPastSlot =
-          normalizedDate < currentBogotaDate ||
-          (normalizedDate === currentBogotaDate &&
-            slotStart < currentBogotaMinutes);
+          normalizedDate < current.date ||
+          (normalizedDate === current.date && slotStart <= current.minute);
 
         const overlapsWithOccupancy = occupied.some(
           (appointment) =>
@@ -651,37 +667,19 @@ export class AppointmentsService {
   }
 
   private normalizeCalendarDate(date: string): string {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      throw new BadRequestException('La fecha debe tener formato YYYY-MM-DD.');
-    }
-
-    const parsed = new Date(`${date}T00:00:00-05:00`);
-
-    if (Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException('La fecha no es válida.');
+    if (typeof date !== 'string' || !isCalendarDate(date)) {
+      throw new BadRequestException(
+        'La fecha debe ser una fecha válida con formato YYYY-MM-DD.',
+      );
     }
 
     return date;
   }
 
+  // Server time in America/Bogota is the authority; the browser clock is UX only.
   private assertFutureDateAndTime(date: string, startMinute: number) {
-    const now = new Date(
-      new Date().toLocaleString('en-US', {
-        timeZone: BUSINESS_TIMEZONE,
-      }),
-    );
-
-    const today = this.getBogotaDateString(now);
-    const currentMinutes = this.getBogotaMinutes(now);
-
-    if (date < today) {
-      throw new BadRequestException(
-        'La fecha de la cita no puede ser anterior a hoy.',
-      );
-    }
-
-    if (date === today && startMinute <= currentMinutes) {
-      throw new BadRequestException('La cita debe estar en el futuro.');
+    if (hasAppointmentStarted(date, startMinute)) {
+      throw new BadRequestException(PAST_APPOINTMENT_MESSAGE);
     }
   }
 
@@ -691,7 +689,7 @@ export class AppointmentsService {
     startMinute: number,
     endMinute: number,
   ): Promise<boolean> {
-    const dayOfWeek = this.getWeekDayFromDate(appointmentDate);
+    const dayOfWeek = weekDayOf(appointmentDate);
 
     const availabilityBlocks =
       await this.prisma.psychologistAvailability.findMany({
@@ -710,43 +708,6 @@ export class AppointmentsService {
       (block) =>
         block.startMinute <= startMinute && block.endMinute >= endMinute,
     );
-  }
-
-  private getWeekDayFromDate(date: string): WeekDay {
-    const dayIndex = new Date(`${date}T12:00:00-05:00`).getDay();
-
-    const mapping: Record<number, WeekDay> = {
-      0: WeekDay.SUNDAY,
-      1: WeekDay.MONDAY,
-      2: WeekDay.TUESDAY,
-      3: WeekDay.WEDNESDAY,
-      4: WeekDay.THURSDAY,
-      5: WeekDay.FRIDAY,
-      6: WeekDay.SATURDAY,
-    };
-
-    return mapping[dayIndex];
-  }
-
-  private getBogotaDateString(date: Date): string {
-    const dateAsString = date.toLocaleString('sv-SE', {
-      timeZone: BUSINESS_TIMEZONE,
-    });
-
-    return dateAsString.slice(0, 10);
-  }
-
-  private getBogotaMinutes(date: Date): number {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: BUSINESS_TIMEZONE,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-
-    const [hours, minutes] = formatter.format(date).split(':').map(Number);
-
-    return hours * 60 + minutes;
   }
 
   private timeToMinutes(time: string): number {

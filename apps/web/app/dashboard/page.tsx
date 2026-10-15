@@ -10,6 +10,12 @@ import {
   getMyProfile,
   type AppointmentSummary,
 } from '../../lib/api';
+import {
+  businessNow,
+  formatCalendarDate,
+  formatTimeRange,
+  splitAppointments,
+} from '../../lib/appointments';
 
 interface PatientProfile {
   id: string;
@@ -103,17 +109,9 @@ function PatientDashboard() {
     profile.fullName?.trim().split(' ')[0] ??
     'paciente';
 
+  // A past SCHEDULED appointment is history ("pendiente de cierre"), never "next".
   const nextAppointment =
-    appointments
-      .filter(
-        (appointment) =>
-          appointment.status === 'SCHEDULED',
-      )
-      .sort(
-        (left, right) =>
-          new Date(left.appointmentDate).getTime() -
-          new Date(right.appointmentDate).getTime(),
-      )[0] ?? null;
+    splitAppointments(appointments, businessNow()).upcoming[0] ?? null;
 
   return (
     <div className="min-h-screen bg-[#F5F0EB]">
@@ -172,20 +170,14 @@ function PatientDashboard() {
 
               {nextAppointment ? (
                 <>
-                  <h2 className="mt-1 text-xl font-semibold text-[#2C2420]">
-                    {new Date(
-                      `${nextAppointment.appointmentDate}T12:00:00`,
-                    ).toLocaleDateString('es-CO', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })}
+                  <h2 className="mt-1 text-xl font-semibold capitalize text-[#2C2420]">
+                    {formatCalendarDate(nextAppointment.appointmentDate)}
                   </h2>
 
                   <p className="mt-2 text-sm text-[#7A6E66]">
                     {nextAppointment.psychologist.fullName ?? 'Psicólogo'}
                     {' · '}
-                    {nextAppointment.startTime} - {nextAppointment.endTime}
+                    {formatTimeRange(nextAppointment.startTime, nextAppointment.endTime)}
                   </p>
                 </>
               ) : (
