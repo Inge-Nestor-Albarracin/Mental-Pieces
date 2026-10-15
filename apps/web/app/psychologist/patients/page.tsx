@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ApiErrorNotice } from '../../../components/api-error-notice';
+import { PageIntro } from '../../../components/app-shell';
+import { EmptyState, Icon } from '../../../components/ui';
 import { getClinicalPatients, type ClinicalPatient } from '../../../lib/api';
 import { isAccessError, portalError, requireSessionToken } from '../../../lib/psychologist';
 
@@ -62,36 +64,39 @@ export default function PsychologistPatientsPage() {
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-primary">Portal del psicólogo</p>
-          <h1 className="mt-1 font-serif text-3xl">Mis pacientes</h1>
-          <p className="mt-2 max-w-xl text-sm text-muted-foreground">Pacientes que administración te ha asignado. Solo verás tus propias notas clínicas.</p>
-        </div>
-        <button type="button" onClick={refresh} disabled={loading || isAccessError(error)} className="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">Actualizar</button>
-      </div>
+      <PageIntro
+        kicker="Portal del psicólogo"
+        title="Mis pacientes"
+        description="Pacientes que administración te ha asignado. Solo verás tus propias notas clínicas."
+        actions={<button type="button" onClick={refresh} disabled={loading || isAccessError(error)} className="btn btn-quiet"><Icon name="refresh" size={18} />Actualizar</button>}
+      />
       {error && <ApiErrorNotice error={error} onRetry={refresh} messages={{ 404: 'No fue posible encontrar el recurso solicitado.' }} />}
       {loading ? (
-        <p role="status" className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">Cargando pacientes...</p>
+        <p role="status" className="surface p-6 text-sm text-muted-foreground">Cargando pacientes...</p>
       ) : patients?.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-border bg-card p-6">
-          <h2 className="font-serif text-xl">Aún no tienes pacientes asignados</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Cuando administración te asigne un paciente, aparecerá aquí.</p>
-        </section>
+        <EmptyState icon="users" title="Aún no tienes pacientes asignados" text="Cuando administración te asigne un paciente, aparecerá aquí." />
       ) : patients && (
         <>
+          <p className="mb-4 text-sm text-ink-soft">{patients.length}{hasMore ? '+' : ''} {patients.length === 1 ? 'paciente asignado' : 'pacientes asignados'}</p>
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {patients.map((patient) => (
-              <li key={patient.id}>
-                <Link href={`/psychologist/patients/${encodeURIComponent(patient.id)}`} className="group flex h-full min-h-11 flex-col rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">
-                  <span className="break-words font-serif text-lg">{patient.fullName?.trim() || 'Paciente sin nombre registrado'}</span>
-                  <span className="mt-3 inline-flex items-center text-sm font-medium text-[#47664C] group-hover:underline">Ver seguimiento <span aria-hidden="true" className="ml-2">→</span></span>
-                </Link>
-              </li>
-            ))}
+            {patients.map((patient) => {
+              const name = patient.fullName?.trim() || 'Paciente sin nombre registrado';
+              return (
+                <li key={patient.id}>
+                  <Link href={`/psychologist/patients/${encodeURIComponent(patient.id)}`} className="quick-card group h-full">
+                    <span aria-hidden="true" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-forest font-serif text-xl text-white">{name[0]?.toUpperCase()}</span>
+                    <span className="flex min-w-0 flex-col gap-1">
+                      <strong className="break-words text-[15px] text-foreground">{name}</strong>
+                      <small className="inline-flex items-center gap-1.5 text-xs text-ink-soft"><Icon name="notes" size={14} />Ver seguimiento y notas</small>
+                    </span>
+                    <span className="text-primary transition group-hover:translate-x-1"><Icon name="arrow" size={18} /></span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
           {hasMore && (
-            <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="mt-6 min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">
+            <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="btn btn-quiet mt-6">
               {loadingMore ? 'Cargando...' : 'Cargar más pacientes'}
             </button>
           )}

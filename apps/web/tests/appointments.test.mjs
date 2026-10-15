@@ -46,8 +46,9 @@ test('REGRESSION: booking sends the psychologist User id, never the StaffProfile
 
 test('REGRESSION: the booking page builds option values with bookingPsychologistId', async () => {
   const source = await readFile(new URL('../app/appointments/new/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /value=\{bookingPsychologistId\(item\)\}/);
-  assert.doesNotMatch(source, /value=\{(item|psychologist)\.id\}/);
+  assert.match(source, /const value = bookingPsychologistId\(item\);/);
+  assert.match(source, /choosePsychologist\(value\)/);
+  assert.doesNotMatch(source, /choosePsychologist\((item|psychologist)\.id\)|value=\{(item|psychologist)\.id\}/);
 });
 
 test('available slots are requested with the User id and a YYYY-MM-DD date', async () => {
@@ -153,4 +154,20 @@ test('error messages are accurate for each HTTP case', () => {
   assert.match(appt.appointmentErrorMessage(err(401), 'book'), /sesión/);
   assert.match(appt.appointmentErrorMessage(err(403), 'book'), /permiso/);
   assert.equal(appt.NO_SLOTS_MESSAGE, 'No hay horarios disponibles para esta fecha.');
+});
+
+test('suggested dates follow the psychologist working weekdays from today (Bogotá calendar)', () => {
+  // 2026-10-14 is a Wednesday.
+  assert.deepEqual(appt.suggestedDates(['FRIDAY'], '2026-10-14', 3), ['2026-10-16', '2026-10-23', '2026-10-30']);
+  assert.deepEqual(appt.suggestedDates(['WEDNESDAY', 'FRIDAY'], '2026-10-14', 3), ['2026-10-14', '2026-10-16', '2026-10-21']);
+  assert.deepEqual(appt.suggestedDates([], '2026-10-14'), []);
+  process.env.TZ = 'Pacific/Kiritimati';
+  assert.deepEqual(appt.suggestedDates(['FRIDAY'], '2026-10-14', 1), ['2026-10-16']);
+});
+
+test('short date chips and session end time', () => {
+  process.env.TZ = 'Pacific/Pago_Pago';
+  assert.match(plain(appt.formatShortDate('2026-10-16')), /^vie\.?,? 16 (de )?oct/);
+  assert.equal(appt.sessionEndTime('09:00'), '10:00');
+  assert.equal(appt.sessionEndTime('17:00'), '18:00');
 });

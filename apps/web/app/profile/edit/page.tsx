@@ -1,307 +1,123 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState, type FormEvent } from 'react';
 
-import {
-  getMyProfile,
-  updateMyProfile,
-} from '../../../lib/api';
-
-type Gender =
-  | 'MALE'
-  | 'FEMALE'
-  | 'NON_BINARY'
-  | 'PREFER_NOT_TO_SAY'
-  | 'OTHER';
+import { ApiErrorNotice } from '../../../components/api-error-notice';
+import { BackLink, PageIntro } from '../../../components/app-shell';
+import { ApiError, getMyProfile, updateMyProfile, type Gender } from '../../../lib/api';
+import { businessNow } from '../../../lib/appointments';
+import { GENDER_OPTIONS, birthDateInput } from '../../../lib/profile';
+import { portalError, requireSessionToken, withSession } from '../../../lib/psychologist';
 
 export default function EditProfilePage() {
   const router = useRouter();
-
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<Error | null>(null);
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<Gender | ''>('');
-  const [genderOther, setGenderOther] =
-    useState('');
+  const [genderOther, setGenderOther] = useState('');
   const [phone, setPhone] = useState('');
-
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] =
-    useState(true);
-  const [isSaving, setIsSaving] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [today] = useState(() => businessNow().date);
 
   useEffect(() => {
-    async function loadProfile() {
-      const token =
-        sessionStorage.getItem('accessToken');
-
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-      try {
-        const profile =
-          await getMyProfile(token);
-
+    let active = true;
+    withSession((token) => getMyProfile(token))
+      .then((profile) => {
+        if (!active) return;
         setFullName(profile.fullName ?? '');
-
-        setBirthDate(
-          profile.birthDate
-            ? profile.birthDate.slice(0, 10)
-            : '',
-        );
-
+        setBirthDate(birthDateInput(profile.birthDate));
         setGender(profile.gender ?? '');
-        setGenderOther(
-          profile.genderOther ?? '',
-        );
+        setGenderOther(profile.genderOther ?? '');
         setPhone(profile.phone ?? '');
-      } catch (error) {
-        if (error instanceof Error) {
-          setError(error.message);
-        } else {
-          setError(
-            'No fue posible cargar el perfil.',
-          );
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    }
+        setLoaded(true);
+      })
+      .catch((caught: unknown) => {
+        if (active) setLoadError(portalError(caught, 'No fue posible cargar tu perfil. Revisa tu conexión y reintenta.'));
+      });
+    return () => { active = false; };
+  }, []);
 
-    void loadProfile();
-  }, [router]);
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    const token =
-      sessionStorage.getItem('accessToken');
-
-    if (!token) {
-      router.replace('/login');
+    setFormError('');
+    if (!gender) {
+      setFormError('Selecciona una opción de género.');
       return;
     }
-
-    setError('');
-    setIsSaving(true);
-
+    setSaving(true);
     try {
-      await updateMyProfile(token, {
-        fullName,
+      await updateMyProfile(requireSessionToken(), {
+        fullName: fullName.trim(),
         birthDate,
-        gender: gender || undefined,
-
-        genderOther:
-          gender === 'OTHER'
-            ? genderOther
-            : undefined,
-
-        phone,
+        gender,
+        genderOther: gender === 'OTHER' ? genderOther.trim() : undefined,
+        phone: phone.trim(),
       });
-
       router.push('/profile');
-    } catch (error) {
-      if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError(
-          'No fue posible actualizar el perfil.',
-        );
-      }
-    } finally {
-      setIsSaving(false);
+    } catch (caught) {
+      if (caught instanceof ApiError && (caught.status === 401 || caught.status === 403)) setLoadError(caught);
+      else setFormError(caught instanceof ApiError && caught.status < 500 ? caught.message : 'No fue posible guardar los cambios. Intenta de nuevo.');
+      setSaving(false);
     }
-  }
-
-  if (isLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p>Cargando perfil...</p>
-      </main>
-    );
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-10">
-      <section className="mx-auto max-w-xl rounded-2xl bg-white p-8 shadow-lg">
-        <div className="mb-8">
-          <p className="text-sm text-slate-500">
-            Mental Pieces
-          </p>
+    <>
+      <BackLink href="/profile">Volver a mi perfil</BackLink>
+      <PageIntro kicker="Tu cuenta" title="Editar perfil" description="Todos los campos son obligatorios para completar tu perfil." />
 
-          <h1 className="text-3xl font-semibold text-slate-900">
-            Editar perfil
-          </h1>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-5"
-        >
-          <div>
-            <label
-              htmlFor="fullName"
-              className="mb-2 block text-sm font-medium text-slate-700"
-            >
-              Nombre completo
-            </label>
-
-            <input
-              id="fullName"
-              type="text"
-              required
-              value={fullName}
-              onChange={(event) =>
-                setFullName(event.target.value)
-              }
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="birthDate"
-              className="mb-2 block text-sm font-medium text-slate-700"
-            >
-              Fecha de nacimiento
-            </label>
-
-            <input
-              id="birthDate"
-              type="date"
-              required
-              value={birthDate}
-              onChange={(event) =>
-                setBirthDate(event.target.value)
-              }
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="gender"
-              className="mb-2 block text-sm font-medium text-slate-700"
-            >
-              Género
-            </label>
-
-            <select
-              id="gender"
-              required
-              value={gender}
-              onChange={(event) =>
-                setGender(
-                  event.target.value as Gender,
-                )
-              }
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-            >
-              <option value="">
-                Seleccionar
-              </option>
-
-              <option value="MALE">
-                Masculino
-              </option>
-
-              <option value="FEMALE">
-                Femenino
-              </option>
-
-              <option value="NON_BINARY">
-                No binario
-              </option>
-
-              <option value="PREFER_NOT_TO_SAY">
-                Prefiero no especificarlo
-              </option>
-
-              <option value="OTHER">
-                Otro
-              </option>
-            </select>
-          </div>
-
-          {gender === 'OTHER' && (
-            <div>
-              <label
-                htmlFor="genderOther"
-                className="mb-2 block text-sm font-medium text-slate-700"
-              >
-                Especificar
-              </label>
-
-              <input
-                id="genderOther"
-                type="text"
-                required
-                value={genderOther}
-                onChange={(event) =>
-                  setGenderOther(
-                    event.target.value,
-                  )
-                }
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-              />
+      {loadError ? (
+        <ApiErrorNotice error={loadError} messages={{ 404: 'No se encontró tu perfil de paciente.' }} />
+      ) : !loaded ? (
+        <p role="status" className="surface p-6 text-sm text-muted-foreground">Cargando perfil...</p>
+      ) : (
+        <form onSubmit={submit} className="surface space-y-5 p-5 sm:p-8">
+          <fieldset disabled={saving} className="grid gap-5 sm:grid-cols-2">
+            <legend className="sr-only">Datos personales</legend>
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <label htmlFor="fullName" className="field-label">Nombre completo</label>
+              <input id="fullName" type="text" required minLength={2} maxLength={120} autoComplete="name"
+                value={fullName} onChange={(event) => setFullName(event.target.value)} className="field" />
             </div>
-          )}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="birthDate" className="field-label">Fecha de nacimiento</label>
+              <input id="birthDate" type="date" required max={today} autoComplete="bday"
+                value={birthDate} onChange={(event) => setBirthDate(event.target.value)} className="field" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="phone" className="field-label">Teléfono</label>
+              <input id="phone" type="tel" required minLength={7} maxLength={25} inputMode="tel" autoComplete="tel"
+                placeholder="300 123 4567" value={phone} onChange={(event) => setPhone(event.target.value)} className="field" />
+            </div>
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <label htmlFor="gender" className="field-label">Género</label>
+              <select id="gender" required value={gender} onChange={(event) => setGender(event.target.value as Gender)} className="field">
+                <option value="">Seleccionar</option>
+                {GENDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
+            {gender === 'OTHER' && (
+              <div className="flex flex-col gap-2 sm:col-span-2">
+                <label htmlFor="genderOther" className="field-label">¿Cómo te identificas?</label>
+                <input id="genderOther" type="text" required maxLength={80}
+                  value={genderOther} onChange={(event) => setGenderOther(event.target.value)} className="field" />
+              </div>
+            )}
+          </fieldset>
 
-          <div>
-            <label
-              htmlFor="phone"
-              className="mb-2 block text-sm font-medium text-slate-700"
-            >
-              Teléfono
-            </label>
+          {formError && <p role="alert" className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</p>}
 
-            <input
-              id="phone"
-              type="tel"
-              required
-              value={phone}
-              onChange={(event) =>
-                setPhone(event.target.value)
-              }
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900"
-            />
-          </div>
-
-          {error && (
-            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </p>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                router.push('/profile')
-              }
-              className="flex-1 rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700"
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="flex-1 rounded-lg bg-slate-900 px-4 py-3 font-medium text-white disabled:opacity-60"
-            >
-              {isSaving
-                ? 'Guardando...'
-                : 'Guardar cambios'}
-            </button>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Link href="/profile" className="btn btn-quiet">Cancelar</Link>
+            <button type="submit" disabled={saving} className="btn btn-primary">{saving ? 'Guardando...' : 'Guardar cambios'}</button>
           </div>
         </form>
-      </section>
-    </main>
+      )}
+    </>
   );
 }

@@ -5,5 +5,5 @@ import { getAdminCareAlerts } from '../../../lib/api';
 
 // ADMIN sees who needs follow-up, never clinical content: no link into the clinical view.
 export default function AdminAlertsPage() {
-  return <CareAlertsView load={getAdminCareAlerts} showPsychologist />;
+  return <CareAlertsView kicker="Administración" load={getAdminCareAlerts} showPsychologist />;
 }

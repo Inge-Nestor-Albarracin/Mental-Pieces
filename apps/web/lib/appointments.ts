@@ -185,3 +185,33 @@ export const WEEK_DAY_LABEL: Record<string, string> = {
   MONDAY: 'lunes', TUESDAY: 'martes', WEDNESDAY: 'miércoles', THURSDAY: 'jueves',
   FRIDAY: 'viernes', SATURDAY: 'sábado', SUNDAY: 'domingo',
 };
+
+const WEEK_DAYS_BY_INDEX = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+
+// Next calendar dates (from `from`, inclusive) that fall on one of the psychologist's working
+// weekdays. UX suggestion only: the API still decides which slots exist.
+export function suggestedDates(weekDays: string[], from: string, count = 6, horizonDays = 42): string[] {
+  const start = calendarParts(from);
+  if (!start || weekDays.length === 0) return [];
+  const wanted = new Set(weekDays);
+  const dates: string[] = [];
+  for (let offset = 0; offset < horizonDays && dates.length < count; offset++) {
+    const day = new Date(Date.UTC(start[0], start[1] - 1, start[2] + offset));
+    if (wanted.has(WEEK_DAYS_BY_INDEX[day.getUTCDay()])) dates.push(day.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+// "lun 19 oct" for compact date chips.
+export function formatShortDate(date: string): string {
+  const parts = calendarParts(date);
+  if (!parts) return date;
+  return new Intl.DateTimeFormat('es-CO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12)));
+}
+
+// Sessions last 60 minutes (server rule); used only to preview the end time.
+export function sessionEndTime(startTime: string): string {
+  const end = timeToMinutes(startTime) + 60;
+  return `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+}

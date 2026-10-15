@@ -8,5 +8,5 @@ function patientHref(alert: CareAlert) {
 }
 
 export default function PsychologistAlertsPage() {
-  return <CareAlertsView load={getMyCareAlerts} showPsychologist={false} patientHref={patientHref} />;
+  return <CareAlertsView kicker="Portal del psicólogo" load={getMyCareAlerts} showPsychologist={false} patientHref={patientHref} />;
 }

@@ -23,3 +23,8 @@ export function portalError(caught: unknown, fallback: string): Error {
 export function isAccessError(error: Error | null): boolean {
   return error instanceof ApiError && (error.status === 401 || error.status === 403);
 }
+
+// Runs an API call with the session token; a missing token becomes a rejected 401, not a throw.
+export function withSession<T>(call: (token: string) => Promise<T>): Promise<T> {
+  return Promise.resolve().then(() => call(requireSessionToken()));
+}

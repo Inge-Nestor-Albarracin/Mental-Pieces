@@ -1,191 +1,86 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
-import { getMyProfile } from '../../lib/api';
-
-interface PatientProfile {
-  id: string;
-  mrn: string;
-  fullName: string | null;
-  birthDate: string | null;
-  gender: string | null;
-  genderOther: string | null;
-  phone: string | null;
-  isProfileComplete: boolean;
-}
+import { ApiErrorNotice } from '../../components/api-error-notice';
+import { BackLink, PageIntro } from '../../components/app-shell';
+import { getMyProfile, type PatientProfile } from '../../lib/api';
+import { formatBirthDate, genderLabel } from '../../lib/profile';
+import { portalError, withSession } from '../../lib/psychologist';
 
 export default function ProfilePage() {
-  const router = useRouter();
-
-  const [profile, setProfile] =
-    useState<PatientProfile | null>(null);
-
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [profile, setProfile] = useState<PatientProfile | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    async function loadProfile() {
-      const token =
-        sessionStorage.getItem('accessToken');
-
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      try {
-        const result = await getMyProfile(token);
-
-        setProfile(result);
-      } catch (error) {
-        if (error instanceof Error) {
-          setError(error.message);
-        } else {
-          setError(
-            'No fue posible cargar el perfil.',
-          );
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    void loadProfile();
-  }, [router]);
-
-  function logout() {
-    sessionStorage.removeItem('accessToken');
-    router.push('/login');
-  }
-
-  if (isLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p>Cargando perfil...</p>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p className="text-red-600">
-          {error}
-        </p>
-      </main>
-    );
-  }
-
-  if (!profile) {
-    return null;
-  }
+    let active = true;
+    withSession((token) => getMyProfile(token))
+      .then((result) => { if (active) setProfile(result); })
+      .catch((caught: unknown) => {
+        if (active) setError(portalError(caught, 'No fue posible cargar tu perfil. Revisa tu conexión y reintenta.'));
+      });
+    return () => { active = false; };
+  }, [revision]);
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-10">
-      <section className="mx-auto max-w-3xl rounded-2xl bg-white p-8 shadow-lg">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <p className="text-sm text-slate-500">
-              Mental Pieces
-            </p>
+    <>
+      <BackLink href="/dashboard">Volver al inicio</BackLink>
+      <PageIntro
+        kicker="Tu cuenta"
+        title="Mi perfil"
+        description="Estos datos nos ayudan a contactarte y a preparar tus sesiones."
+        actions={profile && <Link href="/profile/edit" className="btn btn-primary">Editar perfil</Link>}
+      />
 
-            <h1 className="text-3xl font-semibold text-slate-900">
-              Mi perfil
-            </h1>
+      {error ? (
+        <ApiErrorNotice error={error} onRetry={() => { setError(null); setRevision((value) => value + 1); }} messages={{ 404: 'No se encontró tu perfil de paciente.' }} />
+      ) : !profile ? (
+        <p role="status" className="surface p-6 text-sm text-muted-foreground">Cargando perfil...</p>
+      ) : (
+        <div className="space-y-6">
+          {!profile.isProfileComplete && (
+            <section className="rounded-2xl border border-[#E2CFAE] bg-[#FFF8EA] p-5 sm:p-6">
+              <h2 className="font-semibold text-[#6A5435]">Tu perfil está incompleto</h2>
+              <p className="mt-1 text-sm leading-relaxed text-[#806A4A]">Completa nombre, fecha de nacimiento, género y teléfono para agendar con normalidad.</p>
+              <Link href="/profile/edit" className="btn btn-primary mt-4">Completar perfil</Link>
+            </section>
+          )}
+
+          <section className="surface overflow-hidden">
+            <div className="flex items-center gap-4 border-b border-border bg-mint p-5 sm:p-6">
+              <span aria-hidden="true" className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-forest font-serif text-2xl text-white">
+                {(profile.fullName?.trim()[0] ?? '?').toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="break-words font-serif text-xl text-foreground">{profile.fullName?.trim() || 'Nombre sin registrar'}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">Número de paciente <span className="whitespace-nowrap font-medium tabular-nums text-foreground">{profile.mrn}</span></p>
+              </div>
+            </div>
+            <dl className="grid gap-px bg-border sm:grid-cols-2">
+              <ProfileItem label="Fecha de nacimiento" value={formatBirthDate(profile.birthDate)} />
+              <ProfileItem label="Género" value={genderLabel(profile.gender, profile.genderOther)} />
+              <ProfileItem label="Teléfono" value={profile.phone} />
+              <ProfileItem label="Estado del perfil" value={profile.isProfileComplete ? 'Completo' : 'Incompleto'} />
+            </dl>
+          </section>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/dashboard" className="btn btn-secondary">Volver al inicio</Link>
+            <Link href="/appointments" className="btn btn-quiet">Ver mis citas</Link>
           </div>
-
-          <div className="flex gap-3">
-  <button
-    type="button"
-    onClick={() => router.push('/profile/edit')}
-    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-  >
-    Editar perfil
-  </button>
-
-  <button
-    type="button"
-    onClick={logout}
-    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-  >
-    Cerrar sesión
-  </button>
-</div>
         </div>
-
-        <div className="grid gap-5 sm:grid-cols-2">
-          <ProfileItem
-            label="Nombre"
-            value={profile.fullName}
-          />
-
-          <ProfileItem
-            label="Número de paciente"
-            value={profile.mrn}
-          />
-
-          <ProfileItem
-            label="Fecha de nacimiento"
-             value={
-                profile.birthDate
-                  ? formatBirthDate(profile.birthDate)
-                  : null
-              }
-          />
-
-          <ProfileItem
-            label="Género"
-            value={profile.gender}
-          />
-
-          <ProfileItem
-            label="Teléfono"
-            value={profile.phone}
-          />
-
-          <ProfileItem
-            label="Estado del perfil"
-            value={
-              profile.isProfileComplete
-                ? 'Completo'
-                : 'Incompleto'
-            }
-          />
-        </div>
-      </section>
-    </main>
+      )}
+    </>
   );
 }
 
-function ProfileItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
+function ProfileItem({ label, value }: { label: string; value: string | null }) {
   return (
-    <div className="rounded-xl border border-slate-200 p-4">
-      <p className="text-sm text-slate-500">
-        {label}
-      </p>
-
-      <p className="mt-1 font-medium text-slate-900">
-        {value || 'Sin registrar'}
-      </p>
+    <div className="bg-card p-5">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className={`mt-1 break-words font-medium ${value ? 'text-foreground' : 'italic text-muted-foreground'}`}>{value || 'Sin registrar'}</dd>
     </div>
   );
-}
-
-function formatBirthDate(
-  date: string,
-): string {
-  const datePart = date.slice(0, 10);
-
-  const [year, month, day] =
-    datePart.split('-');
-
-  return `${day}/${month}/${year}`;
 }

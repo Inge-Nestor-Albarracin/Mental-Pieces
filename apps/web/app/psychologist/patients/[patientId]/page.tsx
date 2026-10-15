@@ -1,9 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ApiErrorNotice } from '../../../../components/api-error-notice';
+import { BackLink } from '../../../../components/app-shell';
+import { EmptyState, Eyebrow, Icon, StatusPill } from '../../../../components/ui';
 import {
   ApiError,
   createClinicalNote,
@@ -186,19 +187,22 @@ export default function PatientClinicalPage() {
   const appointmentsById = new Map(completed.map((item) => [item.id, item]));
   const length = content.trim().length;
 
+  const displayName = revoked ? 'Recurso clínico' : patientName ?? 'Paciente asignado';
+
   return (
     <>
-      <Link href="/psychologist/patients" className="inline-flex min-h-11 items-center text-sm font-medium text-[#47664C] hover:underline">
-        <span aria-hidden="true" className="mr-2">←</span> Mis pacientes
-      </Link>
-      <div className="mb-6 mt-2 flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-primary">Seguimiento clínico</p>
-          <h1 className="mt-1 break-words font-serif text-3xl">{revoked ? 'Recurso clínico' : patientName ?? 'Paciente asignado'}</h1>
-          {!revoked && <p className="mt-2 text-sm text-muted-foreground">Solo ves las notas que tú has escrito para este paciente.</p>}
+      <BackLink href="/psychologist/patients">Mis pacientes</BackLink>
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
+          {!revoked && <span aria-hidden="true" className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-forest font-serif text-2xl text-white">{displayName[0]?.toUpperCase()}</span>}
+          <div className="min-w-0">
+            <Eyebrow>Seguimiento clínico</Eyebrow>
+            <h1 className="mt-1.5 break-words font-serif text-3xl font-normal tracking-tight sm:text-4xl">{displayName}</h1>
+            {!revoked && <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-ink-soft"><Icon name="shield" size={16} className="text-primary" />Solo ves las notas que tú has escrito para este paciente.</p>}
+          </div>
         </div>
         {!revoked && (
-          <button type="button" onClick={refresh} disabled={loading} className="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">Actualizar</button>
+          <button type="button" onClick={refresh} disabled={loading} className="btn btn-quiet"><Icon name="refresh" size={18} />Actualizar</button>
         )}
       </div>
 
@@ -211,16 +215,17 @@ export default function PatientClinicalPage() {
       )}
 
       {loading && !notes && !revoked ? (
-        <p role="status" className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">Cargando notas clínicas...</p>
+        <p role="status" className="surface p-6 text-sm text-muted-foreground">Cargando notas clínicas...</p>
       ) : notes && !revoked && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <section aria-labelledby="new-note" className="h-fit rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-            <h2 id="new-note" className="font-serif text-xl">Nueva nota de sesión</h2>
+          <section aria-labelledby="new-note" className="surface h-fit border-2 border-[rgba(54,91,69,0.22)] p-5 sm:p-6 lg:sticky lg:top-24">
+            <Eyebrow>Nueva nota</Eyebrow>
+            <h2 id="new-note" className="mt-1.5 flex items-center gap-2 font-serif text-2xl"><Icon name="edit" size={21} className="text-forest" />Nota de sesión</h2>
             <form onSubmit={submit} className="mt-5">
               <fieldset disabled={saving} className="space-y-4">
                 <legend className="sr-only">Crear nota clínica</legend>
                 <div className="flex flex-col gap-2">
-                  <label htmlFor="note-content" className="text-sm font-medium">Contenido de la nota</label>
+                  <label htmlFor="note-content" className="field-label">Contenido de la nota</label>
                   <textarea
                     id="note-content"
                     value={content}
@@ -230,61 +235,59 @@ export default function PatientClinicalPage() {
                     required
                     aria-describedby="note-counter"
                     autoComplete="off"
-                    className="w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm leading-relaxed outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                    className="field min-h-48 leading-relaxed"
                   />
-                  <p id="note-counter" aria-live="polite" className={`text-xs tabular-nums ${length > NOTE_MAX_LENGTH ? 'font-semibold text-red-800' : 'text-muted-foreground'}`}>
+                  <p id="note-counter" aria-live="polite" className={`text-xs tabular-nums ${length > NOTE_MAX_LENGTH ? 'font-semibold text-red-800' : 'text-ink-soft'}`}>
                     {length.toLocaleString('es-CO')} / {NOTE_MAX_LENGTH.toLocaleString('es-CO')} caracteres
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label htmlFor="note-appointment" className="text-sm font-medium">Vincular a una cita completada (opcional)</label>
-                  <select
-                    id="note-appointment"
-                    value={appointmentId}
-                    onChange={(event) => setAppointmentId(event.target.value)}
-                    className="min-h-11 w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-                  >
+                  <label htmlFor="note-appointment" className="field-label">Vincular a una cita realizada (opcional)</label>
+                  <select id="note-appointment" value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} className="field">
                     <option value="">Sin vincular a una cita</option>
                     {selectable.map((item) => <option key={item.id} value={item.id}>{appointmentLabel(item)}</option>)}
                   </select>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-ink-soft">
                     {appointmentsUnavailable
                       ? 'No fue posible cargar tus citas. Puedes guardar la nota sin vincularla.'
                       : selectable.length === 0
-                        ? 'No hay citas completadas disponibles para vincular con este paciente.'
-                        : 'Solo se muestran tus citas completadas con este paciente que aún no tienen nota.'}
+                        ? 'No hay citas realizadas disponibles para vincular con este paciente.'
+                        : 'Solo se muestran tus citas realizadas con este paciente que aún no tienen nota.'}
                   </p>
                 </div>
-                {formError && <p role="alert" className="text-sm text-red-800">{formError}</p>}
-                {success && <p role="status" className="text-sm text-[#38543D]">{success}</p>}
-                <button type="submit" disabled={saving || length === 0 || length > NOTE_MAX_LENGTH} className="min-h-11 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#587A5E] disabled:cursor-not-allowed disabled:opacity-60">
-                  {saving ? 'Guardando...' : 'Guardar nota'}
+                {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{formError}</p>}
+                {success && <p role="status" className="flex items-center gap-2 rounded-xl bg-mint px-3 py-2 text-sm text-forest-deep"><Icon name="check" size={17} />{success}</p>}
+                <button type="submit" disabled={saving || length === 0 || length > NOTE_MAX_LENGTH} className="btn btn-primary w-full">
+                  <Icon name="check" size={18} />{saving ? 'Guardando...' : 'Guardar nota'}
                 </button>
               </fieldset>
             </form>
           </section>
 
           <section aria-labelledby="notes-title" className="min-w-0">
-            <h2 id="notes-title" className="font-serif text-xl">Mis notas</h2>
-            {notes.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-dashed border-border bg-card p-6">
-                <p className="text-sm text-muted-foreground">Aún no has registrado notas para este paciente.</p>
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <Eyebrow>Historial</Eyebrow>
+                <h2 id="notes-title" className="mt-1.5 font-serif text-2xl">Mis notas</h2>
               </div>
+              <StatusPill tone="gray">{notes.length}{hasMore ? '+' : ''} {notes.length === 1 ? 'nota' : 'notas'}</StatusPill>
+            </div>
+            {notes.length === 0 ? (
+              <EmptyState icon="notes" title="Sin notas todavía" text="Aún no has registrado notas para este paciente." />
             ) : (
-              <ol className="mt-4 space-y-4">
+              <ol className="relative space-y-4 border-l-2 border-[rgba(54,91,69,0.18)] pl-5">
                 {notes.map((note) => {
                   const linked = note.appointmentId ? appointmentsById.get(note.appointmentId) : undefined;
                   return (
-                    <li key={note.id} className="rounded-2xl border border-border bg-card p-5">
-                      <p className="text-xs text-muted-foreground">
-                        <time dateTime={note.createdAt}>{formatDateTime(note.createdAt)}</time>
-                        {note.updatedAt !== note.createdAt && <> · Actualizada {formatDateTime(note.updatedAt)}</>}
-                      </p>
-                      {note.appointmentId && (
-                        <p className="mt-1 text-xs font-medium text-[#38543D]">
-                          {linked ? `Cita del ${appointmentLabel(linked)}` : 'Vinculada a una cita completada'}
-                        </p>
-                      )}
+                    <li key={note.id} className="relative rounded-[18px] border border-[rgba(54,91,69,0.13)] bg-paper p-5 shadow-[var(--shadow-soft)]">
+                      <span aria-hidden="true" className="absolute -left-[29px] top-6 h-3.5 w-3.5 rounded-full border-2 border-paper bg-forest" />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-soft"><Icon name="clock" size={14} /><time dateTime={note.createdAt}>{formatDateTime(note.createdAt)}</time></span>
+                        {note.appointmentId && (
+                          <StatusPill tone="violet">{linked ? `Cita del ${appointmentLabel(linked)}` : 'Vinculada a una cita realizada'}</StatusPill>
+                        )}
+                      </div>
+                      {note.updatedAt !== note.createdAt && <p className="mt-1 text-xs text-ink-soft">Actualizada {formatDateTime(note.updatedAt)}</p>}
                       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed">{note.content}</p>
                     </li>
                   );
@@ -292,7 +295,7 @@ export default function PatientClinicalPage() {
               </ol>
             )}
             {hasMore && (
-              <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="mt-4 min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">
+              <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="btn btn-quiet mt-4">
                 {loadingMore ? 'Cargando...' : 'Cargar notas anteriores'}
               </button>
             )}

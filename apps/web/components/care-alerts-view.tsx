@@ -3,18 +3,16 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { CareAlert, CareAlertPage } from '../lib/api';
+import { formatCalendarDate } from '../lib/appointments';
 import { LEVEL_LABEL, reasonLabel } from '../lib/care-alerts';
 import { isAccessError, portalError, requireSessionToken } from '../lib/psychologist';
 import { ApiErrorNotice } from './api-error-notice';
-
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat('es-CO', {
-    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Bogota',
-  }).format(new Date(`${date}T12:00:00-05:00`));
-}
+import { PageIntro } from './app-shell';
+import { EmptyState, Icon, StatusPill } from './ui';
 
 // Operational follow-up list. Shows appointment metadata only; no clinical content.
-export function CareAlertsView({ load, showPsychologist, patientHref }: {
+export function CareAlertsView({ load, showPsychologist, patientHref, kicker }: {
+  kicker: string;
   load: (token: string, page: number) => Promise<CareAlertPage>;
   showPsychologist: boolean;
   patientHref?: (alert: CareAlert) => string;
@@ -73,62 +71,63 @@ export function CareAlertsView({ load, showPsychologist, patientHref }: {
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-2xl">
-          <h1 className="font-serif text-3xl">Alertas de seguimiento</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Relaciones clínicas activas con señales de inactividad o posible abandono, calculadas con reglas fijas a partir de las citas. Son avisos operativos, no valoraciones clínicas.
-          </p>
-        </div>
-        <button type="button" onClick={refresh} disabled={loading || isAccessError(error)} className="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">Actualizar</button>
-      </div>
+      <PageIntro
+        kicker={kicker}
+        title="Alertas de seguimiento"
+        description="Relaciones clínicas activas con señales de inactividad o posible abandono, calculadas con reglas fijas a partir de las citas. Son avisos operativos, no valoraciones clínicas."
+        actions={<button type="button" onClick={refresh} disabled={loading || isAccessError(error)} className="btn btn-quiet"><Icon name="refresh" size={18} />Actualizar</button>}
+      />
 
       {error && <ApiErrorNotice error={error} onRetry={refresh} messages={{ 404: 'No fue posible encontrar el recurso solicitado.' }} />}
 
       {loading ? (
-        <p role="status" className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">Calculando alertas...</p>
+        <p role="status" className="surface p-6 text-sm text-muted-foreground">Calculando alertas...</p>
       ) : data && (
         <>
-          <p className="mb-4 text-sm text-muted-foreground" aria-live="polite">
-            {data.total === 0 ? 'Sin alertas.' : `${data.total} ${data.total === 1 ? 'alerta' : 'alertas'}${high > 0 ? ` · ${high} de prioridad alta en esta página` : ''}.`}
-          </p>
+          <div className="mb-5 grid gap-3 sm:grid-cols-3" aria-live="polite">
+            <Summary label="Alertas" value={data.total} tone="neutral" />
+            <Summary label="Prioridad alta (esta página)" value={high} tone="high" />
+            <Summary label="Seguimiento (esta página)" value={items.length - high} tone="medium" />
+          </div>
           {data.truncated && (
-            <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-              Hay más relaciones activas de las que se evaluaron en esta consulta; la lista puede estar incompleta.
+            <p role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+              <Icon name="alert" size={18} className="mt-0.5 shrink-0" />Hay más relaciones activas de las que se evaluaron en esta consulta; la lista puede estar incompleta.
             </p>
           )}
           {items.length === 0 ? (
-            <section className="rounded-2xl border border-dashed border-border bg-card p-6">
-              <h2 className="font-serif text-xl">Todo al día</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Ninguna relación activa cumple los criterios de alerta en este momento.</p>
-            </section>
+            <EmptyState icon="check" title="Todo al día" text="Ninguna relación activa cumple los criterios de alerta en este momento." />
           ) : (
             <ul className="space-y-4">
               {items.map((alert) => {
                 const name = alert.patient.fullName?.trim() || 'Paciente sin nombre registrado';
+                const isHigh = alert.level === 'HIGH';
                 return (
-                  <li key={alert.relationshipId} className={`rounded-2xl border bg-card p-5 sm:p-6 ${alert.level === 'HIGH' ? 'border-red-300' : 'border-amber-300'}`}>
+                  <li key={alert.relationshipId} className={`relative overflow-hidden rounded-[22px] border bg-paper p-5 pl-7 shadow-[var(--shadow-soft)] sm:p-6 sm:pl-8 ${isHigh ? 'border-red-300' : 'border-amber-300'}`}>
+                    <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-2 ${isHigh ? 'bg-red-600' : 'bg-amber-400'}`} />
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h2 className="break-words font-serif text-xl">{name}</h2>
-                        {showPsychologist && alert.psychologist && (
-                          <p className="mt-1 break-words text-sm text-muted-foreground">Psicólogo: {alert.psychologist.fullName?.trim() || 'Sin nombre registrado'}</p>
-                        )}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[13px] ${isHigh ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}><Icon name={isHigh ? 'alert' : 'bell'} size={22} /></span>
+                        <div className="min-w-0">
+                          <h2 className="break-words font-serif text-xl">{name}</h2>
+                          {showPsychologist && alert.psychologist && (
+                            <p className="mt-0.5 inline-flex items-center gap-1.5 break-words text-sm text-ink-soft"><Icon name="profile" size={15} />Psicólogo: {alert.psychologist.fullName?.trim() || 'Sin nombre registrado'}</p>
+                          )}
+                        </div>
                       </div>
-                      <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${alert.level === 'HIGH' ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-900'}`}>
-                        {alert.level === 'HIGH' ? '▲ ' : '● '}{LEVEL_LABEL[alert.level]}
-                      </span>
+                      <StatusPill tone={isHigh ? 'red' : 'amber'}>{LEVEL_LABEL[alert.level]}</StatusPill>
                     </div>
-                    <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
-                      {alert.reasons.map((reason) => <li key={reason}>{reasonLabel(reason, alert, data.rules)}</li>)}
+                    <ul className="mt-4 space-y-2 text-sm">
+                      {alert.reasons.map((reason) => (
+                        <li key={reason} className="flex items-start gap-2"><Icon name="arrow" size={16} className="mt-0.5 shrink-0 text-ink-soft" />{reasonLabel(reason, alert, data.rules)}</li>
+                      ))}
                     </ul>
-                    <dl className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                      <div><dt className="inline">Última sesión: </dt><dd className="inline">{alert.lastSessionDate ? formatDate(alert.lastSessionDate) : 'Ninguna'}</dd></div>
-                      <div><dt className="inline">Próxima cita: </dt><dd className="inline">{alert.nextAppointmentDate ? formatDate(alert.nextAppointmentDate) : 'Sin programar'}</dd></div>
+                    <dl className="mt-4 grid gap-2 rounded-2xl bg-background/70 p-3 text-xs text-ink-soft sm:grid-cols-2">
+                      <div className="flex items-center gap-1.5"><Icon name="check" size={15} /><dt>Última sesión:</dt><dd className="font-semibold text-foreground first-letter:uppercase">{alert.lastSessionDate ? formatCalendarDate(alert.lastSessionDate) : 'Ninguna'}</dd></div>
+                      <div className="flex items-center gap-1.5"><Icon name="calendar" size={15} /><dt>Próxima cita:</dt><dd className="font-semibold text-foreground first-letter:uppercase">{alert.nextAppointmentDate ? formatCalendarDate(alert.nextAppointmentDate) : 'Sin programar'}</dd></div>
                     </dl>
                     {patientHref && (
-                      <Link href={patientHref(alert)} className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-[#47664C] hover:underline">
-                        Ver seguimiento <span aria-hidden="true" className="ml-2">→</span>
+                      <Link href={patientHref(alert)} className="btn btn-secondary mt-4 w-full sm:w-auto">
+                        Ver seguimiento <Icon name="arrow" size={17} />
                       </Link>
                     )}
                   </li>
@@ -137,12 +136,22 @@ export function CareAlertsView({ load, showPsychologist, patientHref }: {
             </ul>
           )}
           {data.hasMore && (
-            <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="mt-6 min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">
+            <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="btn btn-quiet mt-6">
               {loadingMore ? 'Cargando...' : 'Cargar más alertas'}
             </button>
           )}
         </>
       )}
     </>
+  );
+}
+
+function Summary({ label, value, tone }: { label: string; value: number; tone: 'neutral' | 'high' | 'medium' }) {
+  const style = tone === 'high' ? 'border-red-200 bg-red-50/70 text-red-800' : tone === 'medium' ? 'border-amber-200 bg-amber-50/70 text-amber-900' : 'border-[rgba(54,91,69,0.13)] bg-paper text-forest';
+  return (
+    <div className={`rounded-[18px] border p-4 ${style}`}>
+      <p className="font-serif text-3xl leading-none tabular-nums">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{label}</p>
+    </div>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiErrorNotice } from '../../../components/api-error-notice';
+import { PageIntro } from '../../../components/app-shell';
+import { Eyebrow, Icon, Notice, StatusPill } from '../../../components/ui';
 import {
   createCareAssignment,
   endCareAssignment,
@@ -21,7 +23,7 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-const inputClass = 'min-h-11 w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60';
+const inputClass = 'field';
 
 export default function ClinicalAssignmentsPage() {
   const [patients, setPatients] = useState<AssignablePatient[]>([]);
@@ -170,31 +172,28 @@ export default function ClinicalAssignmentsPage() {
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-primary">Administración</p>
-          <h1 className="mt-1 font-serif text-3xl">Asignaciones clínicas</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Asignar un paciente autoriza al psicólogo a crear y consultar sus propias notas de ese paciente. Esta vista no muestra contenido clínico.
-          </p>
-        </div>
-        <button type="button" onClick={refresh} disabled={blocked} className="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">Actualizar</button>
-      </div>
+      <PageIntro
+        kicker="Administración"
+        title="Asignaciones clínicas"
+        description="Asignar un paciente autoriza al psicólogo a crear y consultar sus propias notas de ese paciente. Esta vista no muestra contenido clínico."
+        actions={<button type="button" onClick={refresh} disabled={blocked} className="btn btn-quiet"><Icon name="refresh" size={18} />Actualizar</button>}
+      />
 
       {error && <ApiErrorNotice error={error} onRetry={refresh} messages={{ 404: 'No fue posible encontrar el recurso solicitado.', 409: 'La operación entró en conflicto. Actualiza e intenta de nuevo.' }} />}
-      {success && <p role="status" className="mb-4 rounded-xl border border-[#C9DACB] bg-[#EEF4EF] p-4 text-sm text-[#38543D]">{success}</p>}
+      {success && <Notice tone="success">{success}</Notice>}
 
       {loading ? (
-        <p role="status" className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">Cargando asignaciones...</p>
+        <p role="status" className="surface p-6 text-sm text-muted-foreground">Cargando asignaciones...</p>
       ) : isAccessError(error) ? null : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-          <section aria-labelledby="new-assignment" className="h-fit rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
-            <h2 id="new-assignment" className="font-serif text-xl">Nueva asignación</h2>
+          <section aria-labelledby="new-assignment" className="surface h-fit border-2 border-[rgba(54,91,69,0.22)] p-5 sm:p-6 lg:sticky lg:top-24">
+            <Eyebrow>Nueva relación</Eyebrow>
+            <h2 id="new-assignment" className="mt-1.5 flex items-center gap-2 font-serif text-2xl"><Icon name="link" size={21} className="text-forest" />Asignar paciente</h2>
             <form onSubmit={submit} className="mt-5">
               <fieldset disabled={creating} className="space-y-4">
                 <legend className="sr-only">Asignar paciente a psicólogo</legend>
                 <div className="flex flex-col gap-2">
-                  <label htmlFor="assignment-patient" className="text-sm font-medium">Paciente</label>
+                  <label htmlFor="assignment-patient" className="field-label">Paciente</label>
                   <select id="assignment-patient" className={inputClass} value={patientId} onChange={(event) => setPatientId(event.target.value)} required>
                     <option value="">Selecciona un paciente</option>
                     {patients.map((patient) => (
@@ -205,13 +204,13 @@ export default function ClinicalAssignmentsPage() {
                   </select>
                   {patients.length === 0 && <p className="text-xs text-muted-foreground">No hay pacientes activos registrados.</p>}
                   {patientsHasMore && (
-                    <button type="button" onClick={() => void loadMore('patients')} disabled={loadingMore} className="min-h-11 w-fit text-sm font-medium text-[#47664C] underline disabled:opacity-50">
+                    <button type="button" onClick={() => void loadMore('patients')} disabled={loadingMore} className="min-h-11 w-fit text-sm font-medium text-forest underline disabled:opacity-50">
                       {loadingMore ? 'Cargando...' : 'Cargar más pacientes'}
                     </button>
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label htmlFor="assignment-psychologist" className="text-sm font-medium">Psicólogo</label>
+                  <label htmlFor="assignment-psychologist" className="field-label">Psicólogo</label>
                   <select id="assignment-psychologist" className={inputClass} value={psychologistId} onChange={(event) => setPsychologistId(event.target.value)} required>
                     <option value="">Selecciona un psicólogo</option>
                     {psychologists.map((psychologist) => (
@@ -221,20 +220,20 @@ export default function ClinicalAssignmentsPage() {
                   {psychologists.length === 0 && <p className="text-xs text-muted-foreground">No hay psicólogos activos registrados.</p>}
                 </div>
                 {duplicate && !formError && (
-                  <p className="text-sm text-amber-900">
-                    Esta pareja ya tiene una relación {duplicate.isActive ? 'activa' : 'finalizada'}.
+                  <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                    <Icon name="alert" size={17} className="mt-0.5 shrink-0" />Esta pareja ya tiene una relación {duplicate.isActive ? 'activa' : 'finalizada'}.
                   </p>
                 )}
-                {formError && <p role="alert" className="text-sm text-red-800">{formError}</p>}
-                <button type="submit" disabled={creating || !patientId || !psychologistId} className="min-h-11 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#587A5E] disabled:cursor-not-allowed disabled:opacity-60">
-                  {creating ? 'Asignando...' : 'Asignar paciente'}
+                {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{formError}</p>}
+                <button type="submit" disabled={creating || !patientId || !psychologistId} className="btn btn-primary w-full">
+                  <Icon name="link" size={18} />{creating ? 'Asignando...' : 'Asignar paciente'}
                 </button>
               </fieldset>
             </form>
           </section>
 
           <div className="min-w-0 space-y-6">
-            {endError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{endError}</p>}
+            {endError && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{endError}</p>}
             <AssignmentList
               title="Relaciones activas"
               empty="No hay relaciones activas."
@@ -247,7 +246,7 @@ export default function ClinicalAssignmentsPage() {
             />
             <AssignmentList title="Relaciones finalizadas" empty="No hay relaciones finalizadas." items={ended} />
             {assignmentsHasMore && (
-              <button type="button" onClick={() => void loadMore('assignments')} disabled={loadingMore} className="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">
+              <button type="button" onClick={() => void loadMore('assignments')} disabled={loadingMore} className="btn btn-quiet">
                 {loadingMore ? 'Cargando...' : 'Cargar más relaciones'}
               </button>
             )}
@@ -268,43 +267,48 @@ function AssignmentList({ title, empty, items, confirmingId, endingId, onAskEnd,
   onCancelEnd?: () => void;
   onConfirmEnd?: (id: string) => void;
 }) {
+  const activeList = Boolean(onAskEnd);
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-      <h2 className="font-serif text-xl">{title} <span className="text-base text-muted-foreground">({items.length})</span></h2>
+    <section className="surface p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-serif text-2xl">{title}</h2>
+        <StatusPill tone={activeList ? 'green' : 'gray'}>{items.length}</StatusPill>
+      </div>
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">{empty}</p>
+        <p className="mt-3 text-sm text-ink-soft">{empty}</p>
       ) : (
-        <ul className="mt-4 divide-y divide-border">
+        <ul className="mt-4 space-y-3">
           {items.map((item) => {
             const patientName = item.patient.fullName?.trim() || 'Paciente sin nombre';
             const psychologistName = item.psychologist.fullName?.trim() || 'Psicólogo sin nombre';
             return (
-              <li key={item.id} className="flex flex-col gap-3 py-4">
-                <div className="min-w-0">
-                  <p className="break-words font-medium">{patientName}</p>
-                  <p className="mt-1 break-words text-sm text-muted-foreground">Psicólogo: {psychologistName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Asignado: {formatDateTime(item.assignedAt)}
-                    {item.endedAt && <> · Finalizado: {formatDateTime(item.endedAt)}</>}
-                  </p>
-                  <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${item.isActive ? 'bg-[#E5EEE6] text-[#38543D]' : 'bg-secondary text-foreground'}`}>
-                    {item.isActive ? 'Activa' : 'Finalizada'}
-                  </span>
+              <li key={item.id} className={`rounded-2xl border p-4 ${item.isActive ? 'border-[rgba(54,91,69,0.15)] bg-background/60' : 'border-border bg-muted/40'}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="flex items-center gap-2 break-words font-semibold"><Icon name="profile" size={17} className="shrink-0 text-primary" />{patientName}</p>
+                    <p className="flex items-center gap-2 break-words text-sm text-ink-soft"><Icon name="users" size={17} className="shrink-0" />Psicólogo: {psychologistName}</p>
+                    <p className="flex items-center gap-2 text-xs text-ink-soft"><Icon name="calendar" size={15} className="shrink-0" />
+                      Asignado: {formatDateTime(item.assignedAt)}
+                      {item.endedAt && <> · Finalizado: {formatDateTime(item.endedAt)}</>}
+                    </p>
+                  </div>
+                  <StatusPill tone={item.isActive ? 'green' : 'gray'}>{item.isActive ? 'Activa' : 'Finalizada'}</StatusPill>
                 </div>
                 {item.isActive && onAskEnd && (
                   confirmingId === item.id ? (
-                    <div role="group" aria-label={`Confirmar finalización de ${patientName}`} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                      <p>¿Finalizar la relación entre {patientName} y {psychologistName}? El psicólogo perderá el acceso clínico a este paciente. Esta acción no se puede revertir desde aquí.</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => onConfirmEnd?.(item.id)} disabled={endingId === item.id} className="min-h-11 rounded-xl bg-red-700 px-4 py-2 font-semibold text-white disabled:opacity-60">
+                    <div role="group" aria-label={`Confirmar finalización de ${patientName}`} className="mt-4 rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-900">
+                      <p className="flex items-start gap-2 font-semibold"><Icon name="alert" size={18} className="mt-0.5 shrink-0" />¿Finalizar la relación entre {patientName} y {psychologistName}?</p>
+                      <p className="mt-1">El psicólogo perderá el acceso clínico a este paciente. Esta acción no se puede revertir desde aquí.</p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <button type="button" onClick={() => onConfirmEnd?.(item.id)} disabled={endingId === item.id} className="btn btn-danger-solid">
                           {endingId === item.id ? 'Finalizando...' : 'Sí, finalizar'}
                         </button>
-                        <button type="button" onClick={onCancelEnd} disabled={endingId === item.id} className="min-h-11 rounded-xl border border-border bg-white px-4 py-2 font-medium disabled:opacity-60">Cancelar</button>
+                        <button type="button" onClick={onCancelEnd} disabled={endingId === item.id} className="btn btn-quiet">No, mantener activa</button>
                       </div>
                     </div>
                   ) : (
-                    <button type="button" onClick={() => onAskEnd(item.id)} disabled={Boolean(endingId)} className="min-h-11 w-fit rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-50 disabled:opacity-50">
-                      Finalizar relación
+                    <button type="button" onClick={() => onAskEnd(item.id)} disabled={Boolean(endingId)} className="btn btn-danger mt-4 w-full sm:w-auto">
+                      <Icon name="x" size={17} />Finalizar relación
                     </button>
                   )
                 )}

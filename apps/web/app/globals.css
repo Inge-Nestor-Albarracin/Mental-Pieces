@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  /* Brand palette (kept) */
   --background: #f5f0eb;
   --foreground: #2c2420;
 
@@ -21,6 +22,16 @@
 
   --border: #ddd5ca;
   --ring: #6b8f71;
+
+  /* Deeper greens and neutrals from the reference design (AA contrast with white) */
+  --forest: #365b45;
+  --forest-deep: #294637;
+  --mint: #e9f1eb;
+  --paper: #fffdf9;
+  --ink-soft: #59635d;
+  --sun: #f4c85d;
+  --shadow-soft: 0 12px 36px rgba(47, 69, 55, 0.07);
+  --shadow-lift: 0 18px 50px rgba(47, 69, 55, 0.1);
 }
 
 @theme inline {
@@ -45,6 +56,13 @@
   --color-border: var(--border);
   --color-ring: var(--ring);
 
+  --color-forest: var(--forest);
+  --color-forest-deep: var(--forest-deep);
+  --color-mint: var(--mint);
+  --color-paper: var(--paper);
+  --color-ink-soft: var(--ink-soft);
+  --color-sun: var(--sun);
+
   --font-sans: var(--font-outfit);
   --font-serif: var(--font-lora);
 }
@@ -59,10 +77,16 @@ body {
   min-height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-outfit), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button,
@@ -70,4 +94,118 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+/* ---------- Shared UI ---------- */
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-[13px] px-5 py-2.5 text-sm font-bold transition duration-200 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:cursor-not-allowed disabled:hover:translate-y-0;
+  }
+
+  /* Main action: deep forest green, high contrast. */
+  .btn-primary {
+    @apply bg-forest text-white shadow-[0_10px_24px_rgba(41,70,55,0.18)] hover:bg-forest-deep disabled:bg-[#9fb3a6] disabled:shadow-none;
+  }
+
+  /* Secondary action: outlined, as "Crear una cuenta" in the login. */
+  .btn-secondary {
+    @apply border-2 border-forest bg-paper text-forest hover:bg-mint disabled:border-[#9fb3a6] disabled:text-[#7f9184];
+  }
+
+  .btn-quiet {
+    @apply border border-border bg-paper font-semibold text-forest hover:border-primary hover:bg-mint disabled:opacity-60;
+  }
+
+  /* Destructive but recoverable choice (e.g. "Cancelar cita"): clearly red, not filled. */
+  .btn-danger {
+    @apply border-2 border-red-300 bg-white text-red-800 hover:border-red-500 hover:bg-red-50 disabled:opacity-60;
+  }
+
+  /* Final confirmation of a destructive action. */
+  .btn-danger-solid {
+    @apply bg-red-700 text-white shadow-[0_10px_24px_rgba(153,27,27,0.2)] hover:bg-red-800 disabled:opacity-60;
+  }
+
+  .btn-on-dark {
+    @apply bg-paper text-forest-deep shadow-[0_10px_24px_rgba(20,34,25,0.16)] hover:bg-white;
+  }
+
+  .btn-ghost-on-dark {
+    @apply border border-white/40 bg-white/10 text-white hover:bg-white/20;
+  }
+
+  .field {
+    @apply min-h-12 w-full min-w-0 rounded-xl border border-border bg-paper px-4 py-3 text-sm text-foreground outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/15 disabled:opacity-60;
+  }
+
+  .field-label {
+    @apply text-sm font-semibold text-foreground;
+  }
+
+  .surface {
+    @apply rounded-[22px] border border-[rgba(54,91,69,0.13)] bg-paper shadow-[var(--shadow-soft)];
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#5f8069];
+  }
+
+  .icon-box {
+    @apply inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[13px] bg-mint text-forest;
+  }
+
+  .quick-card {
+    @apply grid grid-cols-[auto_1fr_auto] items-center gap-4 rounded-[18px] border border-[rgba(54,91,69,0.11)] bg-paper/80 p-5 transition duration-200 hover:-translate-y-1 hover:border-[rgba(54,91,69,0.3)] hover:shadow-[var(--shadow-soft)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest;
+  }
+
+  .date-block {
+    @apply flex h-[84px] w-[70px] shrink-0 flex-col items-center justify-center rounded-[17px] bg-mint text-forest;
+  }
+}
+
+/* Hero banner: deep green with subtle dot texture and rings, as in the reference. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  color: #fff;
+  background:
+    linear-gradient(105deg, rgba(34, 76, 52, 0.24), rgba(28, 42, 32, 0.74)),
+    linear-gradient(130deg, #759b82, #3c5f48 70%, #28362e);
+  box-shadow: var(--shadow-lift);
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.16;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.8) 0.7px, transparent 0.7px);
+  background-size: 10px 10px;
+  mask-image: linear-gradient(to right, black, transparent 75%);
+}
+
+.hero-ring {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+/* Installed PWA: keep content clear of notches and home indicators. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
 }

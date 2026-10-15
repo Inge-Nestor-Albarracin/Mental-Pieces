@@ -140,24 +140,21 @@ export function getPsychologistAppointments(token: string): Promise<Psychologist
   return authenticatedRequest(token, '/appointments/psychologist/me', 'No fue posible cargar tu agenda.');
 }
 
-export async function getMyProfile(token: string) {
-  const response = await fetch(`${API_URL}/patients/me`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+export type Gender = 'MALE' | 'FEMALE' | 'NON_BINARY' | 'PREFER_NOT_TO_SAY' | 'OTHER';
 
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible consultar el perfil.',
-      ),
-    );
-  }
+export interface PatientProfile {
+  id: string;
+  mrn: string;
+  fullName: string | null;
+  birthDate: string | null;
+  gender: Gender | null;
+  genderOther: string | null;
+  phone: string | null;
+  isProfileComplete: boolean;
+}
 
-  return response.json();
+export function getMyProfile(token: string): Promise<PatientProfile> {
+  return authenticatedRequest(token, '/patients/me', 'No fue posible consultar el perfil.');
 }
 
 export async function registerPatient(
@@ -190,34 +187,20 @@ export async function registerPatient(
 export interface UpdatePatientProfile {
   fullName?: string;
   birthDate?: string;
-  gender?: string;
+  gender?: Gender;
   genderOther?: string;
   phone?: string;
 }
 
-export async function updateMyProfile(
+// Only profile fields travel; identity comes from the JWT on the server.
+export function updateMyProfile(
   token: string,
-  data: UpdatePatientProfile,
-) {
-  const response = await fetch(`${API_URL}/patients/me`, {
+  { fullName, birthDate, gender, genderOther, phone }: UpdatePatientProfile,
+): Promise<PatientProfile> {
+  return authenticatedRequest(token, '/patients/me', 'No fue posible actualizar el perfil.', {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ fullName, birthDate, gender, genderOther, phone }),
   });
-
-  if (!response.ok) {
-    throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible actualizar el perfil.',
-      ),
-    );
-  }
-
-  return response.json();
 }
 
 export interface PsychologistOption {
