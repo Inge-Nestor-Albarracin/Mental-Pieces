@@ -25,6 +25,8 @@ import {
 } from './appointment-time';
 
 const APPOINTMENT_DURATION_MINUTES = 60;
+// Anti-abuse: one patient cannot block a psychologist's whole schedule.
+export const MAX_UPCOMING_APPOINTMENTS_PER_PATIENT = 4;
 const PAST_APPOINTMENT_MESSAGE =
   'No puedes agendar una cita en una fecha u hora pasada.';
 const NOT_MODIFIABLE_MESSAGE =
@@ -93,6 +95,20 @@ export class AppointmentsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const upcoming = await tx.appointment.count({
+        where: {
+          patientId: patient.id,
+          status: AppointmentStatus.SCHEDULED,
+          appointmentDate: { gte: businessNow().date },
+        },
+      });
+
+      if (upcoming >= MAX_UPCOMING_APPOINTMENTS_PER_PATIENT) {
+        throw new ConflictException(
+          `Ya tienes ${MAX_UPCOMING_APPOINTMENTS_PER_PATIENT} citas programadas. Cancela una o espera a que se realice para agendar otra.`,
+        );
+      }
+
       const psychologistConflict = await tx.appointment.findFirst({
         where: {
           psychologistId,

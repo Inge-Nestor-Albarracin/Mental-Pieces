@@ -9,11 +9,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '../../../generated/prisma/enums';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { RATE_LIMITS, throttle } from '../../security/rate-limits';
 import { CareAlertsService } from './care-alerts.service';
 import { ClinicalService } from './clinical.service';
 import { CreateClinicalNoteDto } from './dto/create-clinical-note.dto';
@@ -30,6 +32,7 @@ export class ClinicalController {
 
   // Operational alerts for the signed-in psychologist's active relationships only.
   @Get('alerts')
+  @Throttle(throttle(RATE_LIMITS.heavyRead))
   @Header('Cache-Control', 'no-store')
   listAlerts(
     @Req() request: AuthenticatedRequest,

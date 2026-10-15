@@ -25,6 +25,7 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
   let jwt: JwtService;
   let availability: Partial<Record<WeekDay, [number, number][]>> = {};
   const appointment = {
+    count: jest.fn<Promise<number>, [Prisma.AppointmentCountArgs]>(),
     findFirst: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
@@ -118,6 +119,7 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
             : null,
       ),
     );
+    appointment.count.mockResolvedValue(0);
     appointment.findFirst.mockResolvedValue(null);
     appointment.findMany.mockResolvedValue([]);
     appointment.create.mockImplementation(({ data }) =>
@@ -215,6 +217,28 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
       } finally {
         process.env.TZ = previous;
       }
+    });
+
+    it('caps upcoming appointments per patient (anti-abuse) with a 409', async () => {
+      appointment.count.mockResolvedValue(4);
+      const response = await book('2026-10-15', '09:00').expect(409);
+      expect(response.body).toHaveProperty(
+        'message',
+        'Ya tienes 4 citas programadas. Cancela una o espera a que se realice para agendar otra.',
+      );
+      expect(appointment.count.mock.calls[0]?.[0]).toEqual({
+        where: {
+          patientId,
+          status: 'SCHEDULED',
+          appointmentDate: { gte: '2026-10-14' },
+        },
+      });
+      expect(appointment.create).not.toHaveBeenCalled();
+    });
+
+    it('allows booking while under the cap', async () => {
+      appointment.count.mockResolvedValue(3);
+      await book('2026-10-15', '09:00').expect(201);
     });
 
     it('returns 409 when the psychologist already has that slot', async () => {

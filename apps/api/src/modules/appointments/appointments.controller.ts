@@ -9,6 +9,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { RATE_LIMITS, throttle } from '../../security/rate-limits';
 
 import {
   UserRole,
@@ -58,6 +60,7 @@ export class AppointmentsController {
   ) {}
 
   @Post('me')
+  @Throttle(throttle(RATE_LIMITS.appointmentWrite))
   @Roles(UserRole.PATIENT)
   create(
     @Req()
@@ -84,6 +87,7 @@ export class AppointmentsController {
   }
 
   @Patch('me/:id/cancel')
+  @Throttle(throttle(RATE_LIMITS.appointmentWrite))
   @Roles(UserRole.PATIENT)
   cancel(
     @Req()
@@ -103,6 +107,7 @@ export class AppointmentsController {
   }
 
   @Patch('me/:id/reschedule')
+  @Throttle(throttle(RATE_LIMITS.appointmentWrite))
   @Roles(UserRole.PATIENT)
   reschedule(
     @Req()

@@ -6,6 +6,7 @@ import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
+import { LoginAttemptsService } from './login-attempts.service';
 import { RolesGuard } from './roles.guard';
 
 @Module({
@@ -22,6 +23,12 @@ import { RolesGuard } from './roles.guard';
 
         signOptions: {
           expiresIn: '15m',
+          algorithm: 'HS256',
+        },
+
+        // Only accept the algorithm we sign with (no algorithm confusion).
+        verifyOptions: {
+          algorithms: ['HS256'],
         },
       }),
     }),
@@ -33,6 +40,7 @@ import { RolesGuard } from './roles.guard';
 
   providers: [
     AuthService,
+    LoginAttemptsService,
     JwtAuthGuard,
     RolesGuard,
   ],

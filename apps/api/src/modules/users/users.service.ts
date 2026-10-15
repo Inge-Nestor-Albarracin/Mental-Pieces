@@ -1,4 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { hash } from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 
@@ -48,40 +49,51 @@ export class UsersService {
     const passwordHash = await hash(dto.password, 12);
     const mrn = this.generateMrn();
 
-    return this.prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash,
-        role: UserRole.PATIENT,
+    return this.prisma.user
+      .create({
+        data: {
+          email: normalizedEmail,
+          passwordHash,
+          role: UserRole.PATIENT,
 
-        patientProfile: {
-          create: {
-            mrn,
+          patientProfile: {
+            create: {
+              mrn,
+            },
           },
         },
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
 
-        patientProfile: {
-          select: {
-            mrn: true,
+          patientProfile: {
+            select: {
+              mrn: true,
+            },
           },
         },
-      },
-    });
+      })
+      .catch((error: unknown) => {
+        // Two concurrent sign-ups with the same email: 409, never a 500.
+        if (
+          error instanceof PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException(
+            'Ya existe un usuario registrado con este correo electrónico.',
+          );
+        }
+        throw error;
+      });
   }
 
   private generateMrn(): string {
     const year = new Date().getUTCFullYear();
 
-    const randomPart = randomBytes(8)
-      .toString('hex')
-      .toUpperCase();
+    const randomPart = randomBytes(8).toString('hex').toUpperCase();
 
     return `MP-${year}-${randomPart}`;
   }
