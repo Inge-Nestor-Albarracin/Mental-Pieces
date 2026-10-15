@@ -300,6 +300,49 @@ export function createClinicalNote(
   );
 }
 
+// --- Operational care alerts. Appointment metadata only, never notes. ---
+
+export type CareAlertReason =
+  | 'NO_SHOW_STREAK'
+  | 'INACTIVE'
+  | 'NO_FIRST_SESSION'
+  | 'NO_SHOW_WITHOUT_FOLLOW_UP';
+
+export interface CareAlert {
+  relationshipId: string;
+  patient: { id: string; fullName: string | null };
+  psychologist?: { id: string; fullName: string | null };
+  level: 'HIGH' | 'MEDIUM';
+  reasons: CareAlertReason[];
+  lastSessionDate: string | null;
+  daysSinceLastSession: number | null;
+  daysSinceAssigned: number;
+  noShowsSinceLastSession: number;
+  nextAppointmentDate: string | null;
+}
+
+export interface CareAlertRules {
+  noFirstSessionDays: number;
+  inactiveDays: number;
+  highSeverityDays: number;
+  noShowStreak: number;
+}
+
+export interface CareAlertPage extends Page<CareAlert> {
+  total: number;
+  truncated: boolean;
+  rules: CareAlertRules;
+  generatedAt: string;
+}
+
+export function getMyCareAlerts(token: string, page = 1): Promise<CareAlertPage> {
+  return authenticatedRequest(token, `/clinical/alerts${pageQuery(page)}`, 'No fue posible cargar las alertas.');
+}
+
+export function getAdminCareAlerts(token: string, page = 1): Promise<CareAlertPage> {
+  return authenticatedRequest(token, `/clinical/admin/alerts${pageQuery(page)}`, 'No fue posible cargar las alertas.');
+}
+
 // --- Clinical assignments (ADMIN). Administrative data only, never notes. ---
 
 export interface AssignablePatient {

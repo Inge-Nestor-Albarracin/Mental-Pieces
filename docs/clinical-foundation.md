@@ -128,6 +128,8 @@ del SQL sobre PostgreSQL 11 y anteriores no aplica a esta base.
 | PATCH `/clinical/assignments/:id/end` | ADMIN activo | Cuerpo vacío | Relación finalizada con esos mismos campos |
 | GET `/clinical/assignments?page=1` | ADMIN activo | page opcional | Página (50) de `{ id, isActive, assignedAt, endedAt, patient: { id, fullName }, psychologist: { id, fullName } }` |
 | GET `/clinical/admin/patients?page=1` | ADMIN activo | page opcional | Página (50) de `{ id, fullName, mrn }` de pacientes con cuenta PATIENT activa |
+| GET `/clinical/alerts?page=1` | PSYCHOLOGIST | page opcional | Alertas de sus relaciones activas (ver "Alertas de seguimiento") |
+| GET `/clinical/admin/alerts?page=1` | ADMIN activo | page opcional | Alertas de todas las relaciones activas, más `psychologist: { id, fullName }` |
 | PATCH `/appointments/psychologist/me/:id/complete` | PSYCHOLOGIST propietario activo | Cuerpo y query vacíos | `{ id, appointmentDate, startTime, endTime, status: "COMPLETED" }` |
 | PATCH `/appointments/psychologist/me/:id/no-show` | PSYCHOLOGIST propietario activo | Cuerpo y query vacíos | `{ id, appointmentDate, startTime, endTime, status: "NO_SHOW" }` |
 
@@ -353,3 +355,35 @@ FROM "StaffProfile";
 
 Registros dañados: corregir solo registros de desarrollo cuyo valor correcto sea
 inequívoco, por id, nunca con `replace(...)` masivo ni sobre contenido clínico.
+
+Resultado en la DB de desarrollo (2026-10-14): `server_encoding`/`client_encoding`
+UTF8. Único registro dañado: `StaffProfile cmucz5fvr00010guqihjvip0f`
+(`fullName` y `position` con U+FFFD, `efbfbd`). Se corrigió solo ese id, con guarda
+sobre el valor dañado, a "Psicólogo de Prueba" / "Psicólogo" (`c3b3`). Pacientes y
+notas sin daños.
+
+## Alertas de seguimiento (inactividad / posible abandono)
+
+Avisos operativos calculados al vuelo, sin migración, sin IA y sin contenido
+clínico. Por cada CareRelationship activa se toman las citas del mismo par
+paciente–psicólogo (COMPLETED, NO_SHOW, SCHEDULED). Fechas en calendario de
+America/Bogota.
+
+| Motivo | Regla | Nivel |
+| --- | --- | --- |
+| `NO_SHOW_STREAK` | ≥ 2 NO_SHOW desde la última COMPLETED, aunque haya próxima cita | Alta |
+| `INACTIVE` | Sin cita SCHEDULED futura y ≥ 30 días desde la última COMPLETED | Seguimiento; alta desde 60 |
+| `NO_FIRST_SESSION` | Ninguna COMPLETED, sin cita futura y ≥ 14 días desde la asignación | Seguimiento; alta desde 60 |
+| `NO_SHOW_WITHOUT_FOLLOW_UP` | 1 NO_SHOW tras la última COMPLETED y sin cita futura | Seguimiento |
+
+- Una COMPLETED reinicia el conteo de NO_SHOW. CANCELLED no cuenta como sesión ni
+  como seguimiento. Una SCHEDULED ya terminada no es "próxima cita".
+- Respuesta: `{ relationshipId, patient: { id, fullName }, level, reasons,
+  lastSessionDate, daysSinceLastSession, daysSinceAssigned,
+  noShowsSinceLastSession, nextAppointmentDate }`, ordenado por nivel y antigüedad,
+  con `total`, `rules`, `generatedAt` y `truncated` (se evalúan hasta 1000
+  relaciones activas por consulta).
+- Rutas: `/psychologist/alerts` (enlaza a su vista clínica) y `/admin/alerts` (sin
+  enlaces a notas). STAFF no tiene acceso.
+- Pendiente: alertas persistidas/notificadas, umbrales configurables y aviso de
+  citas SCHEDULED pasadas sin cerrar.

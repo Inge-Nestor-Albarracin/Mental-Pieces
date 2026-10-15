@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { CareAlertsService } from './care-alerts.service';
 import { CareRelationshipsService } from './care-relationships.service';
 import { ClinicalPageDto } from './dto/clinical-page.dto';
 
@@ -12,7 +13,19 @@ import { ClinicalPageDto } from './dto/clinical-page.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class ClinicalAdminController {
-  constructor(private readonly relationships: CareRelationshipsService) {}
+  constructor(
+    private readonly relationships: CareRelationshipsService,
+    private readonly alerts: CareAlertsService,
+  ) {}
+
+  @Get('alerts')
+  @Header('Cache-Control', 'no-store')
+  listAlerts(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ClinicalPageDto,
+  ) {
+    return this.alerts.listForAdmin(request.user.sub, query.page);
+  }
 
   @Get('patients')
   @Header('Cache-Control', 'no-store')

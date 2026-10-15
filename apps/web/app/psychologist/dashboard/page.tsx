@@ -14,6 +14,12 @@ export default function PsychologistDashboardPage() {
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Consulta tus pacientes asignados y registra notas de sesión.</p>
           <span className="mt-6 inline-flex min-h-11 items-center font-medium text-[#47664C] group-hover:underline">Ver pacientes <span aria-hidden="true" className="ml-2">→</span></span>
         </Link>
+        <Link href="/psychologist/alerts" className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:p-8">
+          <p className="text-sm font-medium text-primary">Seguimiento operativo</p>
+          <h2 className="mt-2 font-serif text-2xl">Alertas</h2>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Tus pacientes con inactividad o inasistencias que requieren seguimiento.</p>
+          <span className="mt-6 inline-flex min-h-11 items-center font-medium text-[#47664C] group-hover:underline">Ver alertas <span aria-hidden="true" className="ml-2">→</span></span>
+        </Link>
         <Link href="/psychologist/appointments" className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:p-8">
           <p className="text-sm font-medium text-primary">Tus citas</p>
           <h2 className="mt-2 font-serif text-2xl">Mi agenda</h2>

@@ -16,6 +16,12 @@ export default function AdminDashboardPage() {
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Asigna pacientes a psicólogos y finaliza relaciones de atención.</p>
           <span className="mt-6 inline-flex min-h-11 items-center font-medium text-[#47664C] group-hover:underline">Gestionar asignaciones <span aria-hidden="true" className="ml-2">→</span></span>
         </Link>
+        <Link href="/admin/alerts" className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:p-8">
+          <p className="text-sm font-medium text-primary">Seguimiento operativo</p>
+          <h2 className="mt-2 font-serif text-2xl">Alertas de seguimiento</h2>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Pacientes con inactividad, inasistencias repetidas o sin primera sesión.</p>
+          <span className="mt-6 inline-flex min-h-11 items-center font-medium text-[#47664C] group-hover:underline">Ver alertas <span aria-hidden="true" className="ml-2">→</span></span>
+        </Link>
       </div>
     </>
   );

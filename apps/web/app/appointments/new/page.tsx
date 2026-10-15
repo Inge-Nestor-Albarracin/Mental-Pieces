@@ -40,7 +40,8 @@ export default function NewAppointmentPage() {
         const result = await getPsychologists(token);
         setPsychologists(result);
         if (result[0]) {
-          setSelectedPsychologist(result[0].id);
+          // Appointments reference the psychologist's User id, not the StaffProfile id.
+          setSelectedPsychologist(result[0].user.id);
         }
       } catch (caughtError) {
         if (caughtError instanceof Error) {
@@ -189,8 +190,8 @@ export default function NewAppointmentPage() {
                   <option value="">Selecciona un psicólogo</option>
                   {psychologists.map((psychologist) => (
                     <option
-                      key={psychologist.id}
-                      value={psychologist.id}
+                      key={psychologist.user.id}
+                      value={psychologist.user.id}
                     >
                       {psychologist.fullName ?? 'Psicólogo'}
                     </option>

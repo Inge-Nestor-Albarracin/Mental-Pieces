@@ -15,9 +15,9 @@ export function AppHeader({ role = 'PATIENT' }: { role?: 'PATIENT' | 'PSYCHOLOGI
   const pathname = usePathname();
   const home = HOME[role];
   const links = role === 'PSYCHOLOGIST'
-    ? [[home, 'Inicio'], ['/psychologist/patients', 'Mis pacientes'], ['/psychologist/appointments', 'Mi agenda'], ['/psychologist/availability', 'Mi disponibilidad']]
+    ? [[home, 'Inicio'], ['/psychologist/patients', 'Mis pacientes'], ['/psychologist/alerts', 'Alertas'], ['/psychologist/appointments', 'Mi agenda'], ['/psychologist/availability', 'Mi disponibilidad']]
     : role === 'ADMIN'
-      ? [[home, 'Inicio'], ['/admin/clinical-assignments', 'Asignaciones clínicas']]
+      ? [[home, 'Inicio'], ['/admin/clinical-assignments', 'Asignaciones clínicas'], ['/admin/alerts', 'Alertas']]
       : [[home, 'Inicio'], ['/appointments', 'Mis citas'], ['/appointments/new', 'Agendar cita'], ['/profile', 'Perfil']];
 
   function logout() {

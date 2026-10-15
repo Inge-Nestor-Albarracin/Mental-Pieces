@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { CareAlertsService } from './care-alerts.service';
 import { ClinicalService } from './clinical.service';
 import { CreateClinicalNoteDto } from './dto/create-clinical-note.dto';
 import { ClinicalPageDto } from './dto/clinical-page.dto';
@@ -22,7 +23,20 @@ import { ClinicalPageDto } from './dto/clinical-page.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.PSYCHOLOGIST)
 export class ClinicalController {
-  constructor(private readonly clinical: ClinicalService) {}
+  constructor(
+    private readonly clinical: ClinicalService,
+    private readonly alerts: CareAlertsService,
+  ) {}
+
+  // Operational alerts for the signed-in psychologist's active relationships only.
+  @Get('alerts')
+  @Header('Cache-Control', 'no-store')
+  listAlerts(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ClinicalPageDto,
+  ) {
+    return this.alerts.listForPsychologist(request.user.sub, query.page);
+  }
 
   @Get('patients')
   @Header('Cache-Control', 'no-store')

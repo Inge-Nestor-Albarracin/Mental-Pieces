@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../database/database.module';
 import { AuthModule } from '../auth/auth.module';
+import { CareAlertsService } from './care-alerts.service';
 import { CareRelationshipsController } from './care-relationships.controller';
 import { CareRelationshipsService } from './care-relationships.service';
 import { ClinicalAccessService } from './clinical-access.service';
@@ -21,6 +22,7 @@ import { ClinicalTransactionService } from './clinical-transaction.service';
     CareRelationshipsService,
     ClinicalAccessService,
     ClinicalTransactionService,
+    CareAlertsService,
   ],
   exports: [ClinicalAccessService],
 })

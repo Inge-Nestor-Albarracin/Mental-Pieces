@@ -17,6 +17,7 @@ import { ClinicalTransactionService } from '../src/modules/clinical/clinical-tra
 import { CareRelationshipsController } from '../src/modules/clinical/care-relationships.controller';
 import { CareRelationshipsService } from '../src/modules/clinical/care-relationships.service';
 import { ClinicalAdminController } from '../src/modules/clinical/clinical-admin.controller';
+import { CareAlertsService } from '../src/modules/clinical/care-alerts.service';
 
 const patientId = `c${'1'.repeat(24)}`;
 const psychologistId = `c${'2'.repeat(24)}`;
@@ -72,6 +73,7 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
     auditLog: { create: jest.fn() },
     appointment: {
       findFirst: jest.fn<Promise<unknown>, [Prisma.AppointmentFindFirstArgs]>(),
+      findMany: jest.fn<Promise<unknown[]>, [Prisma.AppointmentFindManyArgs]>(),
     },
   };
   const database = {
@@ -96,6 +98,7 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
         CareRelationshipsService,
         ClinicalAccessService,
         ClinicalTransactionService,
+        CareAlertsService,
         JwtAuthGuard,
         RolesGuard,
         { provide: PrismaService, useValue: database },
@@ -136,6 +139,7 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
     tx.clinicalSessionNote.findMany.mockResolvedValue([note]);
     tx.clinicalSessionNote.create.mockResolvedValue(note);
     tx.auditLog.create.mockResolvedValue({ id: 'audit-test' });
+    tx.appointment.findMany.mockResolvedValue([]);
     tx.appointment.findFirst.mockResolvedValue({
       id: appointmentId,
       status: 'COMPLETED',
@@ -815,6 +819,156 @@ describe('Clinical HTTP authorization (isolated Prisma; real JWT/roles/validatio
         .get(notesPath)
         .set('Authorization', session(UserRole.ADMIN, adminId))
         .expect(403);
+      expect(database.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Operational care alerts', () => {
+    const alertRelationship = {
+      id: relationshipId,
+      assignedAt: new Date('2020-01-01T15:00:00Z'),
+      patient: { id: patientId, fullName: 'Paciente sintético' },
+      psychologist: {
+        id: psychologistId,
+        staffProfile: { fullName: 'Psicólogo sintético' },
+      },
+    };
+    const visit = (appointmentDate: string, status: string) => ({
+      patientId,
+      psychologistId,
+      appointmentDate,
+      startMinute: 540,
+      endMinute: 600,
+      status,
+    });
+
+    beforeEach(() => {
+      tx.careRelationship.findMany.mockResolvedValue([alertRelationship]);
+      tx.appointment.findMany.mockResolvedValue([
+        visit('2020-02-01', 'COMPLETED'),
+        visit('2020-02-08', 'NO_SHOW'),
+        visit('2020-02-15', 'NO_SHOW'),
+      ]);
+    });
+
+    it('rejects missing tokens before accessing Prisma', async () => {
+      for (const path of ['/clinical/alerts', '/clinical/admin/alerts']) {
+        await request(app.getHttpServer()).get(path).expect(401);
+      }
+      expect(database.$transaction).not.toHaveBeenCalled();
+    });
+
+    it.each([UserRole.PATIENT, UserRole.STAFF])(
+      '%s cannot read any alerts',
+      async (role) => {
+        for (const path of ['/clinical/alerts', '/clinical/admin/alerts']) {
+          await request(app.getHttpServer())
+            .get(path)
+            .set('Authorization', session(role))
+            .expect(403);
+        }
+        expect(database.$transaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('roles cannot cross between psychologist and admin alerts', async () => {
+      await request(app.getHttpServer())
+        .get('/clinical/admin/alerts')
+        .set('Authorization', session(UserRole.PSYCHOLOGIST))
+        .expect(403);
+      await request(app.getHttpServer())
+        .get('/clinical/alerts')
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(403);
+      expect(database.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('PSYCHOLOGIST alerts are scoped to own active relationships, metadata only', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/clinical/alerts')
+        .set('Authorization', session(UserRole.PSYCHOLOGIST))
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+      expect(tx.careRelationship.findMany.mock.calls[0]?.[0]).toMatchObject({
+        where: {
+          psychologistId,
+          isActive: true,
+          endedAt: null,
+          psychologist: { role: UserRole.PSYCHOLOGIST, isActive: true },
+          patient: { user: { role: UserRole.PATIENT, isActive: true } },
+        },
+      });
+      expect(tx.appointment.findMany.mock.calls[0]?.[0]).toMatchObject({
+        where: {
+          status: { in: ['COMPLETED', 'NO_SHOW', 'SCHEDULED'] },
+          OR: [{ patientId, psychologistId }],
+        },
+      });
+      const body = response.body as {
+        items: Record<string, unknown>[];
+        total: number;
+      };
+      expect(body.total).toBe(1);
+      expect(body.items[0]).toMatchObject({
+        relationshipId,
+        patient: { id: patientId, fullName: 'Paciente sintético' },
+        level: 'HIGH',
+        reasons: ['NO_SHOW_STREAK', 'INACTIVE'],
+        lastSessionDate: '2020-02-01',
+        noShowsSinceLastSession: 2,
+        nextAppointmentDate: null,
+      });
+      expect(body.items[0]).not.toHaveProperty('psychologist');
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /content|notes|email|phone|address|gender|mrn/,
+      );
+      expect(tx.clinicalSessionNote.findMany).not.toHaveBeenCalled();
+    });
+
+    it('ADMIN alerts require an active ADMIN and add only the psychologist name', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/clinical/admin/alerts')
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(200);
+      expect(tx.user.findFirst).toHaveBeenCalledWith({
+        where: { id: adminId, role: UserRole.ADMIN, isActive: true },
+        select: { id: true },
+      });
+      expect(
+        (response.body as { items: Record<string, unknown>[] }).items[0],
+      ).toMatchObject({
+        psychologist: { id: psychologistId, fullName: 'Psicólogo sintético' },
+      });
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /content|notes|email|phone|address|gender/,
+      );
+      expect(tx.clinicalSessionNote.findMany).not.toHaveBeenCalled();
+    });
+
+    it('an inactive ADMIN gets 403 before relationships are read', async () => {
+      tx.user.findFirst.mockResolvedValue(null);
+      await request(app.getHttpServer())
+        .get('/clinical/admin/alerts')
+        .set('Authorization', session(UserRole.ADMIN, adminId))
+        .expect(403);
+      expect(tx.careRelationship.findMany).not.toHaveBeenCalled();
+    });
+
+    it('no active relationships means no appointment query and no alerts', async () => {
+      tx.careRelationship.findMany.mockResolvedValue([]);
+      const response = await request(app.getHttpServer())
+        .get('/clinical/alerts')
+        .set('Authorization', session(UserRole.PSYCHOLOGIST))
+        .expect(200);
+      expect(response.body).toMatchObject({ items: [], total: 0 });
+      expect(tx.appointment.findMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects identity filters in the query', async () => {
+      await request(app.getHttpServer())
+        .get(`/clinical/alerts?psychologistId=${otherPsychologistId}`)
+        .set('Authorization', session(UserRole.PSYCHOLOGIST))
+        .expect(400);
       expect(database.$transaction).not.toHaveBeenCalled();
     });
   });
