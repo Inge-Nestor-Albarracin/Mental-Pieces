@@ -1,0 +1,145 @@
+@startuml mental-pieces-componentes
+' Mental Pieces — Diagrama de componentes (2026-10-18)
+' Basado en apps/web (Next.js) y apps/api (NestJS: módulos, providers e imports reales).
+' Flujo de arriba hacia abajo: navegador → API REST → capa de seguridad → módulos → base de datos.
+
+top to bottom direction
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam componentStyle uml2
+skinparam nodesep 30
+skinparam ranksep 60
+skinparam ArrowColor #4A5A50
+skinparam ArrowThickness 1.3
+skinparam component {
+  BackgroundColor #FFFDF9
+  BorderColor #365B45
+  BorderThickness 1.4
+}
+skinparam component<<seguridad>> {
+  BackgroundColor #FBE9E7
+  BorderColor #A8432F
+}
+skinparam component<<transversal>> {
+  BackgroundColor #EFEFEF
+  BorderColor #8A8F8B
+}
+skinparam node {
+  BorderColor #294637
+  BorderThickness 2
+  FontSize 15
+  FontStyle bold
+}
+skinparam package {
+  FontSize 13
+  FontStyle bold
+}
+skinparam database {
+  BackgroundColor #E7EEF6
+  BorderColor #2F5A80
+}
+skinparam interface {
+  BackgroundColor #FFFFFF
+  BorderColor #294637
+}
+skinparam legend {
+  BackgroundColor #FFFDF9
+  BorderColor #DDD5CA
+  FontSize 12
+}
+
+title Mental Pieces — Diagrama de componentes
+
+' ================================ Cliente ================================
+node "Navegador del usuario  (PWA instalable)" as Browser {
+  package "apps/web — Next.js 16 · React 19" as Web #F7F4EF {
+    package "Páginas (App Router)" as Pages #FFFFFF {
+      component "Públicas\n/ · /login · /register" as PubPages
+      component "Portal del paciente\n/dashboard · /appointments\n/appointments/new · /profile" as PatPages
+      component "Portal del psicólogo\n/psychologist/dashboard · appointments\navailability · patients · alerts" as PsyPages
+      component "Portal del administrador\n/admin/dashboard\nclinical-assignments · alerts" as AdmPages
+    }
+    component "Componentes compartidos\nAppShell · AppHeader · AppFooter · RoleGate\nAppointmentTabs · CareAlertsView\nAvailabilityForm · ui (Hero, StatusPill…)" as Shared
+    component "Lógica de presentación\nlib/appointments · care-alerts · clinical\nprofile · psychologist · navigation" as WebLib
+    component "Cliente API\nlib/api.ts\nfetch + Authorization: Bearer" as ApiClient
+  }
+  database "sessionStorage\naccessToken (JWT)" as Session
+}
+
+' ================================ Servidor ================================
+interface "API REST\nJSON sobre HTTPS" as REST
+
+node "Servidor API — apps/api  (NestJS 11 · Node.js)" as ApiNode {
+
+  package "Capa de seguridad (toda petición pasa por aquí)" as Sec #FBF3F1 {
+    component "HTTP (main.ts)\nhelmet · CORS_ORIGINS · TRUST_PROXY\nJSON ≤ 100 kB · ValidationPipe" <<seguridad>> as Http
+    component "ThrottlerGuard (global)\nlímites por IP · rate-limits.ts" <<seguridad>> as Throttle
+    component "JwtAuthGuard + RolesGuard\nJWT HS256 · @Roles (exportados por AuthModule)\nsolo login y registro son públicos" <<seguridad>> as Guards
+  }
+
+  package "Módulos de negocio" as Mods #EEF4EF {
+    component "AuthModule\nAuthController · AuthService\nLoginAttemptsService (bloqueo por cuenta)\n/auth/login · /auth/me" as AuthM
+    component "UsersModule\nUsersController · UsersService\nPOST /users (registro)" as UsersM
+    component "PatientsModule\nPatientsController · PatientsService\n/patients/me" as PatientsM
+    component "StaffModule\nStaffController · StaffService\n/staff · /staff/psychologists" as StaffM
+    component "AvailabilityModule\nAvailabilityController · AvailabilityService\n/availability/*" as AvailM
+    component "AppointmentsModule\nAppointmentsController · AppointmentLifecycleController\nAppointmentsService · AppointmentLifecycleService\nappointment-time (hora de Bogotá)\n/appointments/*" as ApptM
+    component "ClinicalModule\nClinical · CareRelationships · ClinicalAdmin (controllers)\nClinicalService · CareRelationshipsService · CareAlertsService\nClinicalAccessService · ClinicalTransactionService\n/clinical/* · transacciones Serializable" as ClinM
+  }
+
+  component "DatabaseModule\nPrismaService\nPrisma Client 7 + adapter pg" <<transversal>> as Db
+}
+
+interface "SQL / TCP\nDATABASE_URL" as SQL
+
+' ================================ Datos ================================
+node "Supabase (nube)" as Supabase {
+  database "PostgreSQL — esquema public\nUser · Patient · StaffProfile\nPsychologistAvailability · Appointment\nCareRelationship · ClinicalSessionNote · AuditLog" as Pg
+  component "Data API (PostgREST)\nroles anon / authenticated" <<seguridad>> as DataApi
+}
+
+' ================================ Conexiones ================================
+' Cliente
+PubPages --> ApiClient
+PatPages --> Shared
+PsyPages --> Shared
+AdmPages --> Shared
+Shared --> WebLib
+WebLib --> ApiClient
+ApiClient --> Session : guarda / lee token
+ApiClient --> REST : HTTPS
+
+' Entrada al servidor
+REST -- Http
+Http --> Throttle
+Throttle --> Guards
+
+' Seguridad → módulos: la flecha llega al paquete completo (todos los controladores pasan por las guardas)
+Guards --> Mods : petición autorizada\nal controlador
+Mods --> Db : consultas Prisma
+
+' Orden de los módulos (enlaces invisibles, solo para la disposición)
+UsersM -[hidden]right- PatientsM
+PatientsM -[hidden]right- StaffM
+AuthM -[hidden]down- AvailM
+AvailM -[hidden]right- ApptM
+
+' Dependencias entre módulos
+AuthM .right.> UsersM : <<use>>
+ClinM .left.> ApptM : <<use>>
+
+Db -- SQL
+SQL --> Pg
+DataApi .left.> Pg : bloqueada\nRLS + REVOKE
+
+legend bottom left
+  <b>Cómo leerlo</b>
+  Flecha continua: llamada en tiempo de ejecución.   Flecha punteada «use»: un módulo importa código de otro.
+  Rojo: componentes de seguridad.   Gris: infraestructura compartida.   Círculo: interfaz que expone un componente.
+  Toda petición atraviesa helmet/CORS → límites por IP → JWT + rol (salvo login y registro) antes de llegar a un controlador.
+  Solo PrismaService habla con PostgreSQL; la Data API de Supabase no tiene permisos sobre ninguna tabla.
+  Las notas clínicas solo salen por ClinicalModule y siempre tras verificar la relación clínica activa (ClinicalAccessService).
+endlegend
+
+@enduml

@@ -1,0 +1,141 @@
+@startuml mental-pieces-casos-de-uso
+' Mental Pieces — Diagrama de casos de uso (2026-10-18)
+' Basado en los endpoints y pantallas reales de apps/api y apps/web.
+' Actores arriba, cada uno sobre su módulo; los flujos bajan dentro de cada paquete.
+
+top to bottom direction
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam nodesep 28
+skinparam ranksep 55
+skinparam ArrowColor #4A5A50
+skinparam ArrowThickness 1.3
+skinparam usecase {
+  BackgroundColor #FFFDF9
+  BorderColor #365B45
+  BorderThickness 1.4
+}
+skinparam usecase<<control>> {
+  BackgroundColor #EFEFEF
+  BorderColor #8A8F8B
+  BorderStyle dashed
+}
+skinparam rectangle {
+  BorderColor #294637
+  BorderThickness 2
+  FontSize 17
+  FontStyle bold
+}
+skinparam package {
+  FontSize 14
+  FontStyle bold
+}
+skinparam legend {
+  BackgroundColor #FFFDF9
+  BorderColor #DDD5CA
+  FontSize 12
+}
+
+title Mental Pieces — Casos de uso
+
+' ============================ Actores ============================
+actor "Visitante" as Visitante #F5F0EB
+actor "Paciente" as Paciente #CFE3D3
+actor "Psicólogo" as Psicologo #D8E8F5
+actor "Administrador" as Admin #F6E1C9
+
+' ============================ Sistema ============================
+rectangle "Sistema Mental Pieces" {
+
+  package "Acceso y cuenta" #F7F4EF {
+    usecase "UC01 Registrarse\ncomo paciente" as UC01
+    usecase "UC02 Iniciar sesión" as UC02
+    usecase "UC03 Consultar y editar\nmi perfil" as UC03
+  }
+
+  package "Citas del paciente" #EEF4EF {
+    usecase "UC04 Agendar cita" as UC04
+    usecase "UC05 Consultar horarios\ndisponibles" as UC05
+    usecase "UC06 Ver mis citas\n(próximas e historial)" as UC06
+    usecase "UC07 Reagendar cita" as UC07
+    usecase "UC08 Cancelar cita" as UC08
+  }
+
+  package "Agenda del psicólogo" #EDF4FA {
+    usecase "UC09 Gestionar disponibilidad\nsemanal" as UC09
+    usecase "UC10 Consultar mi agenda\n(próximas e historial)" as UC10
+    usecase "UC11 Registrar cierre de cita\n(realizada / inasistencia)" as UC11
+  }
+
+  package "Seguimiento clínico" #F3EEF8 {
+    usecase "UC12 Ver pacientes\nasignados" as UC12
+    usecase "UC13 Consultar mis\nnotas clínicas" as UC13
+    usecase "UC14 Crear nota\nclínica" as UC14
+    usecase "UC15 Vincular nota a\ncita realizada" as UC15
+    usecase "UC16 Ver alertas de\nmis pacientes" as UC16
+    usecase "Verificar relación\nclínica activa" <<control>> as CTRL_REL
+  }
+
+  package "Administración" #FBF1E4 {
+    usecase "UC17 Asignar paciente\na psicólogo" as UC17
+    usecase "UC18 Finalizar relación\nclínica" as UC18
+    usecase "UC19 Ver alertas de\nseguimiento (todas)" as UC19
+    usecase "UC20 Crear usuario interno\n(psicólogo / staff)" as UC20
+  }
+}
+
+' Orden de columnas (enlaces invisibles, solo para la disposición)
+Visitante -[hidden]right- Paciente
+Paciente -[hidden]right- Psicologo
+Psicologo -[hidden]right- Admin
+UC01 -[hidden]right- UC04
+UC06 -[hidden]right- UC09
+UC10 -[hidden]right- UC12
+UC16 -[hidden]right- UC17
+
+' ============================ Actor → caso de uso ============================
+Visitante --> UC01
+Visitante --> UC02
+
+Paciente --> UC03
+Paciente --> UC04
+Paciente --> UC06
+
+Psicologo --> UC09
+Psicologo --> UC10
+Psicologo --> UC12
+Psicologo --> UC16
+
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+
+' ============================ include / extend ============================
+' El caso base queda arriba (junto al actor); variantes y pasos incluidos, debajo.
+UC04 ..> UC05 : <<include>>
+UC07 ..> UC05 : <<include>>
+UC06 <.. UC07 : <<extend>>
+UC06 <.. UC08 : <<extend>>
+
+UC10 <.. UC11 : <<extend>>
+
+UC12 <.. UC13 : <<extend>>
+UC13 <.. UC14 : <<extend>>
+UC14 <.. UC15 : <<extend>>
+
+UC13 ..> CTRL_REL : <<include>>
+UC14 ..> CTRL_REL : <<include>>
+
+legend bottom left
+  <b>Cómo leerlo</b>
+  Línea continua: el actor inicia el caso de uso.   Punteada «include»: paso que siempre ocurre.   Punteada «extend»: opción desde el caso base.
+  Todos los roles ingresan con <b>UC02</b> y pueden cerrar sesión en cualquier momento.
+  Quedan registrados en auditoría (sin contenido clínico): UC11, UC14, UC17 y UC18.
+  El Administrador gestiona asignaciones y alertas, pero <b>nunca</b> accede a notas clínicas.
+endlegend
+
+@enduml
