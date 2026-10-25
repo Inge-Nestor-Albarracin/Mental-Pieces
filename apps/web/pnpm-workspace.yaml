@@ -5,6 +5,10 @@ ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
 
+# Flat node_modules (like npm). Hostinger runs the app from a copy of node_modules
+# where pnpm's symlinks no longer resolve: next could not find @swc/helpers.
+nodeLinker: hoisted
+
 # Security: patched transitive build tooling (pnpm audit, 2026-10-15).
 overrides:
   browserslist: ^4.28.7
