@@ -4,6 +4,10 @@ allowBuilds:
   prisma: true
   unrs-resolver: false
 
+# Flat node_modules (like npm). Hostinger runs the app from a copy of node_modules
+# where pnpm's symlinks no longer resolve (startup failed: Cannot find module 'tslib').
+nodeLinker: hoisted
+
 # Security: patched transitive versions (pnpm audit, 2026-10-15).
 overrides:
   proxy-addr: ^2.0.8
