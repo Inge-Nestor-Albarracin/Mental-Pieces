@@ -7,9 +7,11 @@ import {
 } from '@nestjs/common';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
+import type { Prisma } from '../../../generated/prisma/client';
 import { AppointmentStatus, UserRole } from '../../../generated/prisma/client';
 
 import { PrismaService } from '../../database/prisma.service';
+import { isSerializationFailure } from '../../database/serialization-failure';
 
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 
@@ -31,6 +33,10 @@ const PAST_APPOINTMENT_MESSAGE =
   'No puedes agendar una cita en una fecha u hora pasada.';
 const NOT_MODIFIABLE_MESSAGE =
   'Solo una cita programada que aún no ha comenzado puede modificarse.';
+const SLOT_TAKEN_MESSAGE =
+  'Ese horario acaba de ser reservado. Elige otro horario.';
+// Attempts for a booking transaction that PostgreSQL aborted as a serialization conflict.
+const BOOKING_ATTEMPTS = 3;
 
 @Injectable()
 export class AppointmentsService {
@@ -94,7 +100,7 @@ export class AppointmentsService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runBookingTransaction(async (tx) => {
       const upcoming = await tx.appointment.count({
         where: {
           patientId: patient.id,
@@ -412,105 +418,101 @@ export class AppointmentsService {
       );
     }
 
-    return this.prisma
-      .$transaction(async (tx) => {
-        const conflict = await tx.appointment.findFirst({
-          where: {
-            psychologistId: appointment.psychologistId,
-            appointmentDate: newDate,
-            status: AppointmentStatus.SCHEDULED,
-            id: {
-              not: appointment.id,
-            },
-            startMinute: {
-              lt: newEndMinute,
-            },
-            endMinute: {
-              gt: newStartMinute,
-            },
+    return this.runBookingTransaction(async (tx) => {
+      const conflict = await tx.appointment.findFirst({
+        where: {
+          psychologistId: appointment.psychologistId,
+          appointmentDate: newDate,
+          status: AppointmentStatus.SCHEDULED,
+          id: {
+            not: appointment.id,
           },
-          select: {
-            id: true,
+          startMinute: {
+            lt: newEndMinute,
           },
-        });
-
-        if (conflict) {
-          throw new ConflictException(
-            'El nuevo horario ya está ocupado por otra cita del psicólogo.',
-          );
-        }
-
-        const patientConflict = await tx.appointment.findFirst({
-          where: {
-            patientId: patient.id,
-            appointmentDate: newDate,
-            status: AppointmentStatus.SCHEDULED,
-            id: {
-              not: appointment.id,
-            },
-            startMinute: {
-              lt: newEndMinute,
-            },
-            endMinute: {
-              gt: newStartMinute,
-            },
+          endMinute: {
+            gt: newStartMinute,
           },
-          select: {
-            id: true,
-          },
-        });
-
-        if (patientConflict) {
-          throw new ConflictException(
-            'Ya tienes otra cita programada en ese horario.',
-          );
-        }
-
-        const updated = await tx.appointment.update({
-          where: {
-            id: appointment.id,
-            patientId: patient.id,
-            psychologistId: appointment.psychologistId,
-            status: AppointmentStatus.SCHEDULED,
-            appointmentDate: appointment.appointmentDate,
-            startMinute: appointment.startMinute,
-          },
-          data: {
-            appointmentDate: newDate,
-            startMinute: newStartMinute,
-            endMinute: newEndMinute,
-            status: AppointmentStatus.SCHEDULED,
-            cancelledAt: null,
-            cancellationReason: null,
-          },
-          select: {
-            id: true,
-            appointmentDate: true,
-            startMinute: true,
-            endMinute: true,
-            status: true,
-          },
-        });
-
-        return {
-          id: updated.id,
-          appointmentDate: updated.appointmentDate,
-          startTime: this.minutesToTime(updated.startMinute),
-          endTime: this.minutesToTime(updated.endMinute),
-          status: updated.status,
-        };
-      })
-      .catch((error: unknown) => {
-        if (
-          error instanceof PrismaClientKnownRequestError &&
-          error.code === 'P2025'
-        ) {
-          throw new BadRequestException(
-            'La cita cambió y no puede reagendarse.',
-          );
-        }
-        throw error;
+        },
+        select: {
+          id: true,
+        },
       });
+
+      if (conflict) {
+        throw new ConflictException(
+          'El nuevo horario ya está ocupado por otra cita del psicólogo.',
+        );
+      }
+
+      const patientConflict = await tx.appointment.findFirst({
+        where: {
+          patientId: patient.id,
+          appointmentDate: newDate,
+          status: AppointmentStatus.SCHEDULED,
+          id: {
+            not: appointment.id,
+          },
+          startMinute: {
+            lt: newEndMinute,
+          },
+          endMinute: {
+            gt: newStartMinute,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (patientConflict) {
+        throw new ConflictException(
+          'Ya tienes otra cita programada en ese horario.',
+        );
+      }
+
+      const updated = await tx.appointment.update({
+        where: {
+          id: appointment.id,
+          patientId: patient.id,
+          psychologistId: appointment.psychologistId,
+          status: AppointmentStatus.SCHEDULED,
+          appointmentDate: appointment.appointmentDate,
+          startMinute: appointment.startMinute,
+        },
+        data: {
+          appointmentDate: newDate,
+          startMinute: newStartMinute,
+          endMinute: newEndMinute,
+          status: AppointmentStatus.SCHEDULED,
+          cancelledAt: null,
+          cancellationReason: null,
+        },
+        select: {
+          id: true,
+          appointmentDate: true,
+          startMinute: true,
+          endMinute: true,
+          status: true,
+        },
+      });
+
+      return {
+        id: updated.id,
+        appointmentDate: updated.appointmentDate,
+        startTime: this.minutesToTime(updated.startMinute),
+        endTime: this.minutesToTime(updated.endMinute),
+        status: updated.status,
+      };
+    }).catch((error: unknown) => {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new BadRequestException('La cita cambió y no puede reagendarse.');
+      }
+      throw error;
+    });
   }
 
   async getPsychologistAgenda(psychologistUserId: string) {
@@ -680,6 +682,27 @@ export class AppointmentsService {
     }
 
     return slots;
+  }
+
+  // Booking reads "is the slot free?" and then writes. Under PostgreSQL's default
+  // READ COMMITTED two simultaneous requests both saw the slot free and both inserted
+  // (double booking, reproduced in test/integration). SERIALIZABLE makes PostgreSQL
+  // abort one of them (40001); the retry then sees the other booking and answers 409.
+  private async runBookingTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.prisma.$transaction(operation, {
+          isolationLevel: 'Serializable',
+        });
+      } catch (error: unknown) {
+        if (!isSerializationFailure(error)) throw error;
+        if (attempt >= BOOKING_ATTEMPTS) {
+          throw new ConflictException(SLOT_TAKEN_MESSAGE);
+        }
+      }
+    }
   }
 
   private normalizeCalendarDate(date: string): string {

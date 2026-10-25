@@ -11,6 +11,8 @@ export const RATE_LIMITS = {
   login: { ttl: 15 * MINUTE, limit: 20 },
   // Account creation (bcrypt cost 12 per request, spam accounts).
   register: { ttl: 60 * MINUTE, limit: 5 },
+  // Admin creating psychologist/staff accounts (bcrypt cost 12 per request).
+  staffCreate: { ttl: 60 * MINUTE, limit: 30 },
   // Booking, rescheduling and cancelling.
   appointmentWrite: { ttl: 60 * MINUTE, limit: 30 },
   // Expensive aggregate reads (alerts evaluate every active relationship).

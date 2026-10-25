@@ -484,3 +484,41 @@ export function getPsychologistWeeklyAvailability(
     'No fue posible consultar la disponibilidad del psicólogo.',
   );
 }
+
+// --- Internal users (ADMIN). Psychologist and staff accounts are created only here. ---
+
+export type InternalRole = 'PSYCHOLOGIST' | 'STAFF';
+
+export interface InternalUser {
+  id: string;
+  email: string;
+  role: InternalRole;
+  isActive: boolean;
+  createdAt: string;
+  fullName: string | null;
+  phone: string | null;
+  position: string | null;
+}
+
+export interface CreateInternalUserPayload {
+  role: InternalRole;
+  fullName: string;
+  email: string;
+  password: string;
+  phone?: string;
+  position?: string;
+}
+
+export function getInternalUsers(token: string, page = 1): Promise<Page<InternalUser>> {
+  return authenticatedRequest(token, `/staff${pageQuery(page)}`, 'No fue posible cargar los usuarios internos.');
+}
+
+export function createInternalUser(
+  token: string,
+  { role, fullName, email, password, phone, position }: CreateInternalUserPayload,
+): Promise<InternalUser> {
+  return authenticatedRequest(token, '/staff', 'No fue posible crear el usuario.', {
+    method: 'POST',
+    body: JSON.stringify({ role, fullName, email, password, phone, position }),
+  });
+}

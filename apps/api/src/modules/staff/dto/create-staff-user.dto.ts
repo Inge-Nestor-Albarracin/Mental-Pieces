@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsIn,
@@ -9,7 +10,12 @@ import {
 
 import { UserRole } from '../../../../generated/prisma/client';
 
+// Trim before validating, so a name made of spaces is rejected.
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
 export class CreateStaffUserDto {
+  @Transform(trim)
   @IsEmail(
     {},
     {
@@ -33,6 +39,7 @@ export class CreateStaffUserDto {
   })
   password!: string;
 
+  @Transform(trim)
   @IsString({
     message:
       'El nombre debe ser un texto.',
@@ -59,6 +66,7 @@ export class CreateStaffUserDto {
   )
   role!: UserRole;
 
+  @Transform(trim)
   @IsOptional()
   @IsString({
     message:
@@ -74,6 +82,7 @@ export class CreateStaffUserDto {
   })
   phone?: string;
 
+  @Transform(trim)
   @IsOptional()
   @IsString({
     message:

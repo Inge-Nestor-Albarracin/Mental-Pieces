@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 export type IconName =
   | 'arrow' | 'calendar' | 'calendarPlus' | 'check' | 'clock' | 'heart' | 'menu' | 'profile'
   | 'shield' | 'x' | 'users' | 'bell' | 'notes' | 'refresh' | 'trash' | 'plus' | 'edit'
-  | 'alert' | 'back' | 'logout' | 'repeat' | 'link';
+  | 'alert' | 'back' | 'logout' | 'repeat' | 'link' | 'userPlus' | 'eye' | 'eyeOff';
 
 const PATHS: Record<IconName, ReactNode> = {
   arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
@@ -31,6 +31,9 @@ const PATHS: Record<IconName, ReactNode> = {
   logout: <><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" /><path d="M10 17l-5-5 5-5M5 12h11" /></>,
   repeat: <><path d="M17 2l4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" /></>,
   link: <><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></>,
+  userPlus: <><circle cx="10" cy="8" r="4" /><path d="M3 21a7 7 0 0 1 14 0M19 8v6M16 11h6" /></>,
+  eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+  eyeOff: <><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.2 3.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" /></>,
 };
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {

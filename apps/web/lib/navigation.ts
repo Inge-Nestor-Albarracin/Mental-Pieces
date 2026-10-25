@@ -11,7 +11,7 @@ const HOME: Record<ShellRole, string> = {
 export const NAV_LINKS: Record<ShellRole, [string, string][]> = {
   PATIENT: [['/dashboard', 'Inicio'], ['/appointments', 'Mis citas'], ['/appointments/new', 'Agendar cita'], ['/profile', 'Mi perfil']],
   PSYCHOLOGIST: [['/psychologist/dashboard', 'Inicio'], ['/psychologist/appointments', 'Mi agenda'], ['/psychologist/patients', 'Mis pacientes'], ['/psychologist/alerts', 'Alertas'], ['/psychologist/availability', 'Disponibilidad']],
-  ADMIN: [['/admin/dashboard', 'Inicio'], ['/admin/clinical-assignments', 'Asignaciones'], ['/admin/alerts', 'Alertas']],
+  ADMIN: [['/admin/dashboard', 'Inicio'], ['/admin/clinical-assignments', 'Asignaciones'], ['/admin/users', 'Usuarios'], ['/admin/alerts', 'Alertas']],
 };
 
 export const ROLE_LABEL: Record<ShellRole, string> = {

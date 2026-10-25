@@ -42,10 +42,10 @@ export default function AdminDashboardPage() {
       <Hero
         eyebrow="Administración"
         title="Panel administrativo"
-        description="Gestiona qué psicólogo atiende a cada paciente y vigila el seguimiento operativo. Administrar asignaciones no da acceso al contenido clínico."
+        description="Crea las cuentas de psicólogos y staff, gestiona qué psicólogo atiende a cada paciente y vigila el seguimiento operativo. Administrar no da acceso al contenido clínico."
         actions={<>
           <Link href="/admin/clinical-assignments" className="btn btn-on-dark">Gestionar asignaciones <Icon name="arrow" size={18} /></Link>
-          <Link href="/admin/alerts" className="btn btn-ghost-on-dark">Ver alertas</Link>
+          <Link href="/admin/users" className="btn btn-ghost-on-dark"><Icon name="userPlus" size={18} />Crear usuario</Link>
         </>}
         note={{ title: 'Sin acceso a notas', text: 'Separación administrativa y clínica', icon: 'shield' }}
       />
@@ -58,7 +58,8 @@ export default function AdminDashboardPage() {
 
       <section className="mt-12" aria-labelledby="quick-title">
         <SectionHeading eyebrow="Todo en un solo lugar" title="Accesos rápidos" id="quick-title" />
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <QuickCard href="/admin/users" icon="userPlus" title="Usuarios internos" description="Crea las cuentas de psicólogos y staff. El registro público solo crea pacientes." />
           <QuickCard href="/admin/clinical-assignments" icon="users" title="Asignaciones clínicas" description="Asigna pacientes a psicólogos y finaliza relaciones de atención." />
           <QuickCard href="/admin/alerts" icon="bell" title="Alertas de seguimiento" description="Inactividad, inasistencias repetidas o pacientes sin primera sesión."
             badge={overview?.alerts ? <StatusPill tone="amber">{overview.alerts}</StatusPill> : undefined} />
