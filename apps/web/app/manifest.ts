@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 
-// Installable app shell. No service worker/offline cache on purpose: clinical and
-// personal data must not persist on the device outside the authenticated session.
+// Installable app shell. public/sw.js caches only static files and an offline page:
+// clinical and personal data never persist on the device outside the session.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',

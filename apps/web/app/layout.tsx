@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Lora, Outfit } from 'next/font/google';
 
+import { ServiceWorkerRegistration } from '../components/pwa';
 import './globals.css';
 
 const outfit = Outfit({
@@ -51,7 +52,10 @@ export default function RootLayout({
       lang="es"
       className={`${outfit.variable} ${lora.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegistration />
+      </body>
     </html>
   );
 }

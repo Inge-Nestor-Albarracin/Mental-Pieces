@@ -125,7 +125,7 @@ export default function RegisterPage() {
                 alt="Mental Pieces by Paula Sarmiento"
                 width={600}
                 height={300}
-                className="h-auto w-full object-contain"
+                className="h-auto w-full object-contain mix-blend-multiply"
                 priority
               />
             </div>

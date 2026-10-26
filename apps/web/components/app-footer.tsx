@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { NAV_LINKS, homeHref, type ShellRole } from '../lib/navigation';
+import { InstallAppButton } from './pwa';
 import { Icon } from './ui';
 
 export function AppFooter({ role }: { role: ShellRole }) {
@@ -14,6 +15,7 @@ export function AppFooter({ role }: { role: ShellRole }) {
           <p className="mt-5 max-w-sm text-sm leading-relaxed">
             Un espacio seguro para organizar la atención psicológica y acompañar cada etapa del proceso.
           </p>
+          <InstallAppButton onDark className="mt-5 w-full sm:w-auto" />
         </div>
 
         <nav aria-label="Enlaces del pie de página" className="flex flex-col items-start gap-3 text-sm">

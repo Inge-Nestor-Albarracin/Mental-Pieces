@@ -10,6 +10,7 @@ import {
 import { login } from '../../lib/api';
 import { homeForRole } from '../../components/role-gate';
 import Image from 'next/image';
+import { InstallAppButton } from '../../components/pwa';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -135,7 +136,7 @@ export default function LoginPage() {
               alt="Mental Pieces by Paula Sarmiento"
               width={500}
               height={250}
-              className="h-auto w-full object-contain"
+              className="h-auto w-full object-contain mix-blend-multiply"
               priority
             />
           </div>
@@ -287,6 +288,8 @@ export default function LoginPage() {
             <p className="text-center text-xs text-[#7A6E66]">
               ¿Es tu primera vez en Mental Pieces?
             </p>
+
+            <InstallAppButton className="w-full" />
           </div>
 
           {/* Privacidad */}

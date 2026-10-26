@@ -59,6 +59,62 @@ test('PWA manifest is installable and its icons exist', async () => {
   for (const icon of manifest.icons) assert.ok((await stat(new URL(`../public${icon.src}`, import.meta.url))).size > 0, icon.src);
 });
 
-test('no service worker caches personal or clinical data', async () => {
-  await assert.rejects(stat(new URL('../public/sw.js', import.meta.url)));
+test('service worker caches only static files, never pages or API data', async () => {
+  const sw = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  // Cross-origin requests (the API) are ignored; only GET is considered.
+  assert.match(sw, /if \(url\.origin !== self\.location\.origin\) return;/);
+  assert.match(sw, /if \(request\.method !== 'GET'\) return;/);
+  // Navigations are network-only with an offline fallback: page HTML is never stored.
+  assert.match(sw, /request\.mode === 'navigate'[\s\S]{0,120}fetch\(request\)\.catch\(\(\) => caches\.match\(OFFLINE_URL\)\)/);
+  const cacheable = /function isCacheableStatic\(url\) \{([\s\S]*?)\}/.exec(sw)?.[1] ?? '';
+  assert.match(cacheable, /\/_next\/static\//);
+  assert.doesNotMatch(cacheable, /api|appointments|clinical|patients|profile/i);
+  await stat(new URL('../public/offline.html', import.meta.url));
+});
+
+test('service worker behaviour: offline fallback for pages, cache for static, API untouched', async () => {
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const listeners = {};
+  const store = new Map();
+  const cache = {
+    addAll: async (urls) => urls.forEach((u) => store.set(u, `precached ${u}`)),
+    put: async (request, response) => store.set(new URL(request.url).pathname, response),
+    match: async (request) => store.get(typeof request === 'string' ? request : new URL(request.url).pathname),
+  };
+  const self = {
+    location: { origin: 'https://mentalpieces.site' },
+    addEventListener: (type, fn) => { listeners[type] = fn; },
+    skipWaiting: () => {},
+    clients: { claim: async () => {} },
+  };
+  let online = true;
+  const network = [];
+  const fakeFetch = async (request) => {
+    network.push(request.url);
+    if (!online) throw new TypeError('offline');
+    return { ok: true, clone: () => 'copy', body: `network ${request.url}` };
+  };
+  const caches = { open: async () => cache, keys: async () => [], match: (r) => cache.match(r), delete: async () => true };
+  new Function('self', 'caches', 'fetch', source)(self, caches, fakeFetch);
+  await new Promise((resolve) => listeners.install({ waitUntil: (p) => p.then(resolve) }));
+
+  async function dispatch(url, { mode = 'cors', method = 'GET' } = {}) {
+    let responded = null;
+    listeners.fetch({ request: { url, mode, method }, respondWith: (p) => { responded = p; } });
+    return responded ? await responded : 'not intercepted';
+  }
+
+  assert.equal(await dispatch('https://api.mentalpieces.site/appointments/me'), 'not intercepted');
+  assert.equal(await dispatch('https://mentalpieces.site/login', { method: 'POST' }), 'not intercepted');
+  assert.equal(await dispatch('https://mentalpieces.site/manifest.webmanifest'), 'not intercepted');
+
+  online = false;
+  assert.equal(await dispatch('https://mentalpieces.site/dashboard', { mode: 'navigate' }), 'precached /offline.html');
+  assert.ok(!store.has('/dashboard'), 'page HTML must never be cached');
+
+  online = true;
+  await dispatch('https://mentalpieces.site/_next/static/chunks/app.js');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(store.has('/_next/static/chunks/app.js'));
+  assert.deepEqual([...store.keys()].filter((k) => !k.startsWith('/_next/static/') && !k.startsWith('/icons/') && k !== '/offline.html'), []);
 });
