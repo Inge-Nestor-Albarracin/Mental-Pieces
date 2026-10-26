@@ -185,6 +185,9 @@ export class NotificationProcessor {
                 user: { select: { email: true, isActive: true } },
               },
             },
+            psychologist: {
+              select: { id: true, email: true, isActive: true },
+            },
           },
         },
       },
@@ -214,7 +217,11 @@ export class NotificationProcessor {
         acceptedAt: { gte: new Date(now.getTime() - DAY_MS) },
       },
     });
-    if (sentToRecipient >= this.config.perRecipientDailyLimit) {
+    const recipientLimit =
+      decision.audience === 'PSYCHOLOGIST'
+        ? this.config.psychologistDailyLimit
+        : this.config.perRecipientDailyLimit;
+    if (sentToRecipient >= recipientLimit) {
       await this.finish(id, {
         status: NotificationStatus.CANCELLED,
         errorCode: 'RECIPIENT_DAILY_LIMIT',
@@ -228,6 +235,7 @@ export class NotificationProcessor {
       startMinute: notification.startMinute,
       endMinute: decision.endMinute,
       appUrl: this.config.appUrl,
+      audience: decision.audience,
     });
     try {
       const { messageId } = await this.sender.send({

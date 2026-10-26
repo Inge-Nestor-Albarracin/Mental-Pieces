@@ -67,6 +67,40 @@ describe('email templates', () => {
     expect(html).toContain('&lt;script&gt;');
   });
 
+  it.each([
+    [NotificationType.APPOINTMENT_CONFIRMATION, 'Nueva cita agendada'],
+    [NotificationType.APPOINTMENT_RESCHEDULE, 'Cita con nuevo horario'],
+    [NotificationType.APPOINTMENT_CANCELLATION, 'Cita cancelada'],
+  ])(
+    'psychologist version of %s links to the agenda, without patient data',
+    (type, subject) => {
+      const email = renderNotificationEmail({
+        ...base,
+        type,
+        audience: 'PSYCHOLOGIST',
+      });
+      expect(email.subject).toBe(subject);
+      for (const body of [email.html, email.text]) {
+        expect(body).toContain(
+          'https://mentalpieces.site/psychologist/appointments',
+        );
+        expect(body).toContain('Ver mi agenda');
+        expect(body).toContain('lunes, 26 de octubre de 2026');
+        expect(body).not.toContain('Ver mis citas');
+      }
+      expect(email.text).toContain('no incluimos datos del paciente');
+    },
+  );
+
+  it('the patient version stays the default', () => {
+    const email = renderNotificationEmail({
+      ...base,
+      type: NotificationType.APPOINTMENT_CONFIRMATION,
+    });
+    expect(email.subject).toBe('Confirmación de tu cita');
+    expect(email.text).toContain('https://mentalpieces.site/appointments');
+  });
+
   it('marks the SMTP test message as a test', () => {
     const { subject } = renderNotificationEmail({
       ...base,

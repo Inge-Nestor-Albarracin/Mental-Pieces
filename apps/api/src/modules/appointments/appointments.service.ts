@@ -190,7 +190,8 @@ export class AppointmentsService {
       // Outbox in the same transaction: no notification exists unless the booking commits.
       await enqueueAppointmentBooked(tx, {
         appointmentId: created.id,
-        recipientUserId: patientUserId,
+        patientUserId,
+        psychologistUserId: created.psychologistId,
         appointmentDate: created.appointmentDate,
         startMinute: created.startMinute,
       });
@@ -336,6 +337,7 @@ export class AppointmentsService {
           },
           select: {
             id: true,
+            psychologistId: true,
             appointmentDate: true,
             startMinute: true,
             endMinute: true,
@@ -347,7 +349,8 @@ export class AppointmentsService {
         // Same transaction: pending reminders are dropped and the cancellation queued.
         await enqueueAppointmentCancelled(tx, {
           appointmentId: row.id,
-          recipientUserId: patientUserId,
+          patientUserId,
+          psychologistUserId: row.psychologistId,
           appointmentDate: row.appointmentDate,
           startMinute: row.startMinute,
         });
@@ -523,7 +526,8 @@ export class AppointmentsService {
       // Old reminders are invalidated; the change and the new reminder are queued.
       await enqueueAppointmentRescheduled(tx, {
         appointmentId: updated.id,
-        recipientUserId: patientUserId,
+        patientUserId,
+        psychologistUserId: appointment.psychologistId,
         appointmentDate: updated.appointmentDate,
         startMinute: updated.startMinute,
       });

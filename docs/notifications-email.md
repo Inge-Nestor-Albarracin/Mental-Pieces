@@ -5,13 +5,17 @@ Todavía **no** se ha probado con el SMTP real de Hostinger ni con el cron real 
 
 ## 1. Qué hace
 
-| Evento | Mensaje | Cuándo |
-| --- | --- | --- |
-| El paciente agenda | Confirmación de cita | En el siguiente ciclo del cron (≤ 5 min) |
-| El paciente agenda (faltan > 24 h) | Recordatorio de cita | 24 h antes del inicio (± 5 min) |
-| El paciente cancela | Cancelación de cita | En el siguiente ciclo; los recordatorios pendientes se anulan |
-| El paciente reagenda | Cambio de horario | En el siguiente ciclo; el recordatorio viejo se anula y se programa uno nuevo |
-| El psicólogo cierra (realizada / inasistencia) | — | Se anulan los recordatorios pendientes |
+| Evento | Paciente recibe | Psicólogo recibe | Cuándo |
+| --- | --- | --- | --- |
+| El paciente agenda | «Confirmación de tu cita» | «Nueva cita agendada» | Siguiente ciclo del cron (≤ 5 min) |
+| El paciente agenda (faltan > 24 h) | «Recordatorio de cita» (si lo activó) | — | 24 h antes del inicio (± 5 min) |
+| El paciente cancela | «Cancelación de tu cita» | «Cita cancelada» | Siguiente ciclo; los pendientes se anulan |
+| El paciente reagenda | «Cambio de horario de tu cita» | «Cita con nuevo horario» | Siguiente ciclo; lo pendiente del horario viejo se anula |
+| El psicólogo cierra (realizada / inasistencia) | — | — | Se anulan los recordatorios pendientes |
+
+El psicólogo recibe su copia en el correo de su cuenta (`User.email` del psicólogo de la cita). El
+mensaje enlaza a `/psychologist/appointments` y **no incluye datos del paciente**: los consulta en la
+aplicación, detrás del inicio de sesión. No recibe recordatorios de 24 h.
 
 Las citas agendadas con **menos de 24 h** de anticipación reciben solo la confirmación: no se envía un
 recordatorio retroactivo.
@@ -36,8 +40,11 @@ COMMIT                                            3. revisa la cita REAL de cada
   permanentes (Hostinger no garantiza workers).
 - **Proveedor intercambiable** (`email/email-sender.ts`): las reglas dependen de una interfaz; la
   implementación actual es Nodemailer + SMTP de Hostinger (`email/smtp-email-sender.ts`).
-- **No existe ningún endpoint HTTP que envíe correos.** El destinatario siempre sale de
-  `Appointment → Patient → User.email`; nunca de datos enviados por el navegador.
+- **No existe ningún endpoint HTTP que envíe correos.** El destinatario siempre sale de la cita:
+  `Appointment → Patient → User.email` o `Appointment → psicólogo (User.email)`; nunca de datos
+  enviados por el navegador. Cada fila guarda `recipientUserId`; antes de enviar se comprueba que siga
+  siendo el paciente o el psicólogo de esa cita (si no, `RECIPIENT_MISMATCH`). Por eso la copia del
+  psicólogo no necesitó columnas ni migraciones nuevas.
 
 ## 3. Modelo de persistencia
 
@@ -78,7 +85,7 @@ Justo antes de cada envío se lee la cita **actual** (`notification-rules.ts`):
 ## 5. Idempotencia y concurrencia
 
 - `idempotencyKey` único: `confirmation:<cita>`, `cancellation:<cita>`, `reminder:<cita>:<fecha>:<min>`,
-  `reschedule:<cita>:<n>`. Un reintento SERIALIZABLE de la reserva recalcula la misma clave dentro de
+  `reschedule:<cita>:<n>`; las copias del psicólogo llevan el prefijo `psychologist:`. Un reintento SERIALIZABLE de la reserva recalcula la misma clave dentro de
   una transacción nueva, así que no se duplican eventos.
 - Volver a un horario anterior reactiva su recordatorio cancelado (no lo duplica).
 - Reclamación atómica con `FOR UPDATE SKIP LOCKED`: dos ejecuciones simultáneas toman filas distintas
@@ -100,7 +107,10 @@ Justo antes de cada envío se lee la cita **actual** (`notification-rules.ts`):
 - Lote por ejecución: `NOTIFICATIONS_BATCH_SIZE` (20).
 - Tope diario del buzón: `NOTIFICATIONS_DAILY_LIMIT` (80, por debajo del límite de Hostinger; ajústalo a
   tu plan). El cron se detiene al alcanzarlo.
-- Tope por persona y día: `NOTIFICATIONS_PER_RECIPIENT_DAILY_LIMIT` (10), contra abusos.
+- Tope por persona y día: `NOTIFICATIONS_PER_RECIPIENT_DAILY_LIMIT` (10) para pacientes y
+  `NOTIFICATIONS_PSYCHOLOGIST_DAILY_LIMIT` (40) para psicólogos, contra abusos.
+- Cada agendamiento, cambio o cancelación genera **dos** correos (paciente + psicólogo): calcula el tope
+  diario del buzón con eso en mente.
 - Tiempo máximo por ejecución: `NOTIFICATIONS_MAX_RUNTIME_SECONDS` (240); lo no enviado vuelve a la cola
   sin gastar intento. Muy por debajo del corte de 30 min del cron de Hostinger.
 - Además siguen vigentes los límites de la API: 30 reservas/cambios por hora e IP y máximo 4 citas
@@ -110,7 +120,7 @@ Justo antes de cada envío se lee la cita **actual** (`notification-rules.ts`):
 
 - Contenido: un texto general, la fecha y la hora (hora de Colombia) y un enlace a
   `https://mentalpieces.site/appointments`.
-- **No incluye:** nombre del paciente ni del psicólogo, diagnósticos, síntomas, motivos, notas, datos
+- **No incluye:** nombre del paciente ni del psicólogo (tampoco en la copia del psicólogo), diagnósticos, síntomas, motivos, notas, datos
   de relaciones clínicas, JWT ni enlaces de acceso.
 - Asuntos discretos: «Confirmación de tu cita», «Recordatorio de cita», «Cancelación de tu cita»,
   «Cambio de horario de tu cita».
@@ -150,7 +160,7 @@ del cron.
 | `NOTIFICATIONS_TIMEZONE` | No | `America/Bogota` (único valor aceptado) |
 | `NOTIFICATIONS_TEST_RECIPIENT` | No | Solo para `send-test` |
 | `APP_PUBLIC_URL` | No | `https://mentalpieces.site` (por defecto) |
-| `NOTIFICATIONS_BATCH_SIZE`, `_DAILY_LIMIT`, `_PER_RECIPIENT_DAILY_LIMIT`, `_MAX_ATTEMPTS`, `_MAX_RUNTIME_SECONDS`, `_LEASE_MINUTES`, `_MAX_DELAY_HOURS` | No | 20, 80, 10, 4, 240, 15, 24 |
+| `NOTIFICATIONS_BATCH_SIZE`, `_DAILY_LIMIT`, `_PER_RECIPIENT_DAILY_LIMIT`, `_PSYCHOLOGIST_DAILY_LIMIT`, `_MAX_ATTEMPTS`, `_MAX_RUNTIME_SECONDS`, `_LEASE_MINUTES`, `_MAX_DELAY_HOURS` | No | 20, 80, 10, 40, 4, 240, 15, 24 |
 
 La certificación TLS nunca se desactiva. Una configuración incompleta hace que el cron termine con un
 mensaje que nombra las variables faltantes, sin mostrar valores.
@@ -246,7 +256,7 @@ cd <carpeta-de-la-api>
 
 Esperado: `SMTP OK: smtp.hostinger.com:465 (TLS), login accepted`.
 
-### Paso 6 — Un único correo de prueba
+### Paso 6 — Un único correo de prueba (agrega `--audience psychologist` para ver la versión del psicólogo)
 
 En el archivo privado pon `NOTIFICATIONS_TEST_RECIPIENT=<tu correo autorizado>` y ejecuta:
 

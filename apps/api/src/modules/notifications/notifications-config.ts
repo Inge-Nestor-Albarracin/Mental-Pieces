@@ -19,6 +19,8 @@ export interface NotificationsConfig {
   batchSize: number;
   dailyLimit: number;
   perRecipientDailyLimit: number;
+  // Psychologists receive one message per booking change of every patient.
+  psychologistDailyLimit: number;
   maxAttempts: number;
   maxRuntimeMs: number;
   leaseMs: number;
@@ -123,6 +125,14 @@ export function loadNotificationsConfig(
       10,
       1,
       100,
+      invalid,
+    ),
+    psychologistDailyLimit: integer(
+      env,
+      'NOTIFICATIONS_PSYCHOLOGIST_DAILY_LIMIT',
+      40,
+      1,
+      500,
       invalid,
     ),
     maxAttempts: integer(env, 'NOTIFICATIONS_MAX_ATTEMPTS', 4, 1, 10, invalid),

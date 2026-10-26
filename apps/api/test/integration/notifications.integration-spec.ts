@@ -55,6 +55,7 @@ const config = (
   batchSize: 50,
   dailyLimit: 1000,
   perRecipientDailyLimit: 100,
+  psychologistDailyLimit: 100,
   maxAttempts: 4,
   maxRuntimeMs: 60_000,
   leaseMs: 10 * 60_000,
@@ -84,8 +85,21 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
   const rows = (appointmentId: string) =>
     prisma.notification.findMany({
       where: { appointmentId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { idempotencyKey: 'asc' }],
     });
+
+  // [who, type, status, errorCode] sorted, so assertions do not depend on insert order.
+  async function summary(appointmentId: string, patient: FixtureUser) {
+    const who = (userId: string) =>
+      userId === patient.userId
+        ? 'patient'
+        : userId === psychologist.userId
+          ? 'psychologist'
+          : 'other';
+    return (await rows(appointmentId))
+      .map((n) => [who(n.recipientUserId), n.type, n.status, n.errorCode])
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  }
 
   async function book(patient: FixtureUser, date: string, time: string) {
     return appointments.create(patient.userId, {
@@ -107,34 +121,42 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
     return { date: businessDatePlus(1), time: '06:00' };
   }
 
+  const {
+    APPOINTMENT_CONFIRMATION,
+    APPOINTMENT_REMINDER,
+    APPOINTMENT_CANCELLATION,
+    APPOINTMENT_RESCHEDULE,
+  } = NotificationType;
+  const { PENDING, CANCELLED, ACCEPTED, FAILED } = NotificationStatus;
+
   describe('outbox (written in the appointment transaction)', () => {
-    it('1-2: booking queues a confirmation and a reminder for the owner', async () => {
+    it('1-2: booking queues a confirmation for patient AND psychologist, and the patient reminder', async () => {
       const patient = await fx.patient();
       const date = businessDatePlus(5);
       const appointment = await book(patient, date, '09:00');
-      const queued = await rows(appointment.id);
-      expect(queued.map((n) => [n.type, n.status])).toEqual([
-        [NotificationType.APPOINTMENT_CONFIRMATION, NotificationStatus.PENDING],
-        [NotificationType.APPOINTMENT_REMINDER, NotificationStatus.PENDING],
+      expect(await summary(appointment.id, patient)).toEqual([
+        ['patient', APPOINTMENT_CONFIRMATION, PENDING, null],
+        ['patient', APPOINTMENT_REMINDER, PENDING, null],
+        ['psychologist', APPOINTMENT_CONFIRMATION, PENDING, null],
       ]);
-      expect(queued.every((n) => n.recipientUserId === patient.userId)).toBe(
-        true,
+      const reminder = (await rows(appointment.id)).find(
+        (n) => n.type === APPOINTMENT_REMINDER,
       );
-      const reminder = queued[1];
-      expect(reminder.scheduledFor.toISOString()).toBe(
+      expect(reminder?.scheduledFor.toISOString()).toBe(
         new Date(
           appointmentStartUtc(date, minutes('09:00')).getTime() - DAY,
         ).toISOString(),
       );
-      expect(reminder.channel).toBe('EMAIL');
+      expect(reminder?.channel).toBe('EMAIL');
     });
 
-    it('16: booked with less than 24 h left: confirmation only, no retroactive reminder', async () => {
+    it('16: booked with less than 24 h left: confirmations only, no retroactive reminder', async () => {
       const patient = await fx.patient();
       const slot = slotWithin24h();
       const appointment = await book(patient, slot.date, slot.time);
-      expect((await rows(appointment.id)).map((n) => n.type)).toEqual([
-        NotificationType.APPOINTMENT_CONFIRMATION,
+      expect(await summary(appointment.id, patient)).toEqual([
+        ['patient', APPOINTMENT_CONFIRMATION, PENDING, null],
+        ['psychologist', APPOINTMENT_CONFIRMATION, PENDING, null],
       ]);
     });
 
@@ -155,43 +177,50 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
     it('race: two simultaneous bookings of one slot leave notifications for the winner only', async () => {
       const [a, b] = [await fx.patient(), await fx.patient()];
       const date = businessDatePlus(7);
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         book(a, date, '11:00'),
         book(b, date, '11:00'),
       ]);
-      const owners = await prisma.notification.findMany({
+      const winner = results.find((r) => r.status === 'fulfilled');
+      expect(winner).toBeDefined();
+      const id = (winner as PromiseFulfilledResult<{ id: string }>).value.id;
+      const patientRows = await prisma.notification.findMany({
         where: { recipientUserId: { in: [a.userId, b.userId] } },
         select: { recipientUserId: true },
       });
-      expect(owners).toHaveLength(2);
-      expect(new Set(owners.map((o) => o.recipientUserId)).size).toBe(1);
+      expect(patientRows).toHaveLength(2); // confirmation + reminder of the winner
+      expect(new Set(patientRows.map((o) => o.recipientUserId)).size).toBe(1);
+      expect(
+        await prisma.notification.count({
+          where: { appointmentId: id, recipientUserId: psychologist.userId },
+        }),
+      ).toBe(1);
     });
 
-    it('5: cancelling drops pending reminders and queues a cancellation', async () => {
+    it('5: cancelling drops pending messages and notifies patient and psychologist', async () => {
       const patient = await fx.patient();
       const appointment = await book(patient, businessDatePlus(8), '09:00');
       await appointments.cancel(patient.userId, appointment.id, {});
-      const queued = await rows(appointment.id);
-      expect(queued.map((n) => [n.type, n.status, n.errorCode])).toEqual([
+      expect(await summary(appointment.id, patient)).toEqual([
+        ['patient', APPOINTMENT_CANCELLATION, PENDING, null],
         [
-          NotificationType.APPOINTMENT_CONFIRMATION,
-          NotificationStatus.CANCELLED,
+          'patient',
+          APPOINTMENT_CONFIRMATION,
+          CANCELLED,
           'APPOINTMENT_CANCELLED',
         ],
+        ['patient', APPOINTMENT_REMINDER, CANCELLED, 'APPOINTMENT_CANCELLED'],
+        ['psychologist', APPOINTMENT_CANCELLATION, PENDING, null],
         [
-          NotificationType.APPOINTMENT_REMINDER,
-          NotificationStatus.CANCELLED,
+          'psychologist',
+          APPOINTMENT_CONFIRMATION,
+          CANCELLED,
           'APPOINTMENT_CANCELLED',
-        ],
-        [
-          NotificationType.APPOINTMENT_CANCELLATION,
-          NotificationStatus.PENDING,
-          null,
         ],
       ]);
     });
 
-    it('6-7: rescheduling invalidates the old reminder and schedules the new one', async () => {
+    it('6-7: rescheduling invalidates old messages and notifies both with the new slot', async () => {
       const patient = await fx.patient();
       const date = businessDatePlus(9);
       const appointment = await book(patient, date, '09:00');
@@ -199,23 +228,24 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         appointmentDate: date,
         startTime: '15:00',
       });
-      const queued = await rows(appointment.id);
-      const pending = queued.filter(
-        (n) => n.status === NotificationStatus.PENDING,
-      );
-      expect(pending.map((n) => [n.type, n.startMinute])).toEqual([
-        [NotificationType.APPOINTMENT_RESCHEDULE, minutes('15:00')],
-        [NotificationType.APPOINTMENT_REMINDER, minutes('15:00')],
+      const pending = (await rows(appointment.id))
+        .filter((n) => n.status === PENDING)
+        .map((n) => [
+          n.recipientUserId === patient.userId ? 'patient' : 'psychologist',
+          n.type,
+          n.startMinute,
+        ])
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+      expect(pending).toEqual([
+        ['patient', APPOINTMENT_REMINDER, minutes('15:00')],
+        ['patient', APPOINTMENT_RESCHEDULE, minutes('15:00')],
+        ['psychologist', APPOINTMENT_RESCHEDULE, minutes('15:00')],
       ]);
-      const old = queued.find(
+      const old = (await rows(appointment.id)).find(
         (n) =>
-          n.type === NotificationType.APPOINTMENT_REMINDER &&
-          n.startMinute === minutes('09:00'),
+          n.type === APPOINTMENT_REMINDER && n.startMinute === minutes('09:00'),
       );
-      expect([old?.status, old?.errorCode]).toEqual([
-        NotificationStatus.CANCELLED,
-        'SUPERSEDED',
-      ]);
+      expect([old?.status, old?.errorCode]).toEqual([CANCELLED, 'SUPERSEDED']);
 
       // Moving back to the original slot re-arms its reminder instead of failing.
       await appointments.reschedule(patient.userId, appointment.id, {
@@ -223,17 +253,16 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         startTime: '09:00',
       });
       const again = await rows(appointment.id);
-      const reminders = again.filter(
-        (n) => n.type === NotificationType.APPOINTMENT_REMINDER,
-      );
       expect(
-        reminders
-          .filter((n) => n.status === NotificationStatus.PENDING)
+        again
+          .filter(
+            (n) => n.type === APPOINTMENT_REMINDER && n.status === PENDING,
+          )
           .map((n) => n.startMinute),
       ).toEqual([minutes('09:00')]);
       expect(
-        again.filter((n) => n.type === NotificationType.APPOINTMENT_RESCHEDULE),
-      ).toHaveLength(2);
+        again.filter((n) => n.type === APPOINTMENT_RESCHEDULE),
+      ).toHaveLength(4);
     });
 
     it.each([AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW])(
@@ -248,7 +277,7 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         );
         await prisma.notification.create({
           data: {
-            type: NotificationType.APPOINTMENT_REMINDER,
+            type: APPOINTMENT_REMINDER,
             recipientUserId: patient.userId,
             appointmentId: past.id,
             appointmentDate: businessDatePlus(-1),
@@ -260,7 +289,7 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         await lifecycle.finish(psychologist.userId, past.id, status);
         const [reminder] = await rows(past.id);
         expect([reminder.status, reminder.errorCode]).toEqual([
-          NotificationStatus.CANCELLED,
+          CANCELLED,
           'APPOINTMENT_CLOSED',
         ]);
       },
@@ -271,15 +300,8 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
     beforeEach(async () => {
       // Isolation inside the disposable DB: earlier tests' messages are out of scope.
       await prisma.notification.updateMany({
-        where: {
-          status: {
-            in: [NotificationStatus.PENDING, NotificationStatus.PROCESSING],
-          },
-        },
-        data: {
-          status: NotificationStatus.CANCELLED,
-          errorCode: 'TEST_ISOLATION',
-        },
+        where: { status: { in: [PENDING, NotificationStatus.PROCESSING] } },
+        data: { status: CANCELLED, errorCode: 'TEST_ISOLATION' },
       });
     });
 
@@ -305,56 +327,105 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
     it('14: NOTIFICATIONS_ENABLED=false sends nothing and touches nothing', async () => {
       const { appointment } = await bookedPatient(10);
       const sender = new FakeSender();
-      const summary = await new NotificationProcessor(
+      const result = await new NotificationProcessor(
         prisma,
         sender,
         config({ enabled: false }),
       ).runOnce();
-      expect(summary.stoppedBy).toBe('disabled');
+      expect(result.stoppedBy).toBe('disabled');
       expect(sender.sent).toHaveLength(0);
       expect(
         (await rows(appointment.id)).every(
-          (n) => n.status === NotificationStatus.PENDING && n.attempts === 0,
+          (n) => n.status === PENDING && n.attempts === 0,
         ),
       ).toBe(true);
     });
 
-    it('2, 11: sends due confirmations to the owner’s address once; rerunning does not resend', async () => {
+    it('2, 11: sends the confirmation to the patient and to the psychologist once; rerun does not resend', async () => {
       const { patient, appointment } = await bookedPatient(11);
       const sender = new FakeSender();
       const processor = new NotificationProcessor(prisma, sender, config());
       const first = await processor.runOnce();
-      expect(first.accepted).toBe(1);
-      expect(sender.sent.map((m) => [m.to, m.subject])).toEqual([
-        [patient.email, 'Confirmación de tu cita'],
-      ]);
-      const confirmation = (await rows(appointment.id))[0];
-      expect(confirmation.status).toBe(NotificationStatus.ACCEPTED);
-      expect(confirmation.acceptedAt).toBeInstanceOf(Date);
-      expect(confirmation.providerMessageId).toBe('<fake-1@test>');
-      // The reminder is not due yet.
-      expect((await rows(appointment.id))[1].status).toBe(
-        NotificationStatus.PENDING,
+      expect(first.accepted).toBe(2);
+      const byRecipient = Object.fromEntries(sender.sent.map((m) => [m.to, m]));
+      expect(byRecipient[patient.email].subject).toBe(
+        'Confirmación de tu cita',
       );
+      expect(byRecipient[patient.email].text).toContain('/appointments');
+      expect(byRecipient[psychologist.email].subject).toBe(
+        'Nueva cita agendada',
+      );
+      expect(byRecipient[psychologist.email].text).toContain(
+        '/psychologist/appointments',
+      );
+      // The psychologist's message never names the patient.
+      expect(byRecipient[psychologist.email].html).not.toContain(patient.email);
+      const confirmations = (await rows(appointment.id)).filter(
+        (n) => n.type === APPOINTMENT_CONFIRMATION,
+      );
+      expect(
+        confirmations.every((n) => n.status === ACCEPTED && n.acceptedAt),
+      ).toBe(true);
+      // The patient reminder is not due yet.
+      expect(
+        (await rows(appointment.id)).find(
+          (n) => n.type === APPOINTMENT_REMINDER,
+        )?.status,
+      ).toBe(PENDING);
       await processor.runOnce();
-      expect(sender.sent).toHaveLength(1);
+      expect(sender.sent).toHaveLength(2);
+    });
+
+    it('cancellation and reschedule reach both recipients with their own wording', async () => {
+      const a = await bookedPatient(12, '13:00');
+      const b = await bookedPatient(13, '13:00');
+      await appointments.cancel(a.patient.userId, a.appointment.id, {});
+      await appointments.reschedule(b.patient.userId, b.appointment.id, {
+        appointmentDate: businessDatePlus(13),
+        startTime: '16:00',
+      });
+      const sender = new FakeSender();
+      await new NotificationProcessor(prisma, sender, config()).runOnce();
+      const got = sender.sent
+        .map((m) => [
+          m.to === psychologist.email ? 'psychologist' : m.to,
+          m.subject,
+        ])
+        .sort();
+      expect(got).toEqual(
+        [
+          [a.patient.email, 'Cancelación de tu cita'],
+          [b.patient.email, 'Cambio de horario de tu cita'],
+          ['psychologist', 'Cita cancelada'],
+          ['psychologist', 'Cita con nuevo horario'],
+        ].sort(),
+      );
     });
 
     it('10: two simultaneous runs never send the same message twice', async () => {
-      for (let i = 0; i < 6; i++) await bookedPatient(12 + i, '10:00');
+      for (let i = 0; i < 6; i++) await bookedPatient(14 + i, '10:00');
       const sender = new FakeSender();
       sender.delayMs = 30;
       const [a, b] = await Promise.all([
         new NotificationProcessor(prisma, sender, config()).runOnce(),
         new NotificationProcessor(prisma, sender, config()).runOnce(),
       ]);
-      expect(a.claimed + b.claimed).toBe(6);
-      expect(sender.sent).toHaveLength(6);
-      expect(new Set(sender.sent.map((m) => m.to)).size).toBe(6);
+      expect(a.claimed + b.claimed).toBe(12);
+      expect(sender.sent).toHaveLength(12);
+      expect(
+        sender.sent.filter((m) => m.to === psychologist.email),
+      ).toHaveLength(6);
+      expect(
+        new Set(
+          sender.sent
+            .filter((m) => m.to !== psychologist.email)
+            .map((m) => m.to),
+        ).size,
+      ).toBe(6);
     });
 
     it('12: a transient SMTP failure is retried later with backoff; repeated failures end FAILED', async () => {
-      const { appointment } = await bookedPatient(18);
+      const { patient, appointment } = await bookedPatient(20);
       const sender = new FakeSender();
       let clock = new Date();
       const processor = new NotificationProcessor(
@@ -363,15 +434,24 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         config({ maxAttempts: 2 }),
         () => clock,
       );
-      sender.failures.push(new EmailDeliveryError('ETIMEDOUT', true));
+      const patientConfirmation = async () =>
+        (await rows(appointment.id)).find(
+          (n) =>
+            n.type === APPOINTMENT_CONFIRMATION &&
+            n.recipientUserId === patient.userId,
+        )!;
+      sender.failures.push(
+        new EmailDeliveryError('ETIMEDOUT', true),
+        new EmailDeliveryError('ETIMEDOUT', true),
+      );
       const first = await processor.runOnce();
-      expect(first.retried).toBe(1);
-      let [confirmation] = await rows(appointment.id);
+      expect(first.retried).toBe(2);
+      let confirmation = await patientConfirmation();
       expect([
         confirmation.status,
         confirmation.attempts,
         confirmation.errorCode,
-      ]).toEqual([NotificationStatus.PENDING, 1, 'ETIMEDOUT']);
+      ]).toEqual([PENDING, 1, 'ETIMEDOUT']);
       expect(
         confirmation.scheduledFor.getTime() - clock.getTime(),
       ).toBeGreaterThanOrEqual(5 * 60_000 - 1000);
@@ -379,35 +459,41 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
       expect(sender.sent).toHaveLength(0);
 
       clock = new Date(clock.getTime() + 6 * 60_000);
-      sender.failures.push(new EmailDeliveryError('ETIMEDOUT', true));
+      sender.failures.push(
+        new EmailDeliveryError('ETIMEDOUT', true),
+        new EmailDeliveryError('ETIMEDOUT', true),
+      );
       await processor.runOnce();
-      [confirmation] = await rows(appointment.id);
-      expect([confirmation.status, confirmation.attempts]).toEqual([
-        NotificationStatus.FAILED,
-        2,
-      ]);
+      confirmation = await patientConfirmation();
+      expect([confirmation.status, confirmation.attempts]).toEqual([FAILED, 2]);
     });
 
     it('permanent SMTP errors fail without retries', async () => {
-      const { appointment } = await bookedPatient(19);
+      const { appointment } = await bookedPatient(21);
       const sender = new FakeSender();
-      sender.failures.push(new EmailDeliveryError('SMTP_550', false));
-      const summary = await new NotificationProcessor(
+      sender.failures.push(
+        new EmailDeliveryError('SMTP_550', false),
+        new EmailDeliveryError('SMTP_550', false),
+      );
+      const result = await new NotificationProcessor(
         prisma,
         sender,
         config(),
       ).runOnce();
-      expect(summary.failed).toBe(1);
-      const [confirmation] = await rows(appointment.id);
-      expect([
-        confirmation.status,
-        confirmation.errorCode,
-        confirmation.attempts,
-      ]).toEqual([NotificationStatus.FAILED, 'SMTP_550', 1]);
+      expect(result.failed).toBe(2);
+      const confirmations = (await rows(appointment.id)).filter(
+        (n) => n.type === APPOINTMENT_CONFIRMATION,
+      );
+      expect(
+        confirmations.map((n) => [n.status, n.errorCode, n.attempts]),
+      ).toEqual([
+        [FAILED, 'SMTP_550', 1],
+        [FAILED, 'SMTP_550', 1],
+      ]);
     });
 
     it('checks the real appointment just before sending (cancelled / moved = not sent)', async () => {
-      const { appointment } = await bookedPatient(20);
+      const { appointment } = await bookedPatient(22);
       await prisma.appointment.update({
         where: { id: appointment.id },
         data: { status: AppointmentStatus.CANCELLED },
@@ -415,18 +501,45 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
       const sender = new FakeSender();
       await new NotificationProcessor(prisma, sender, config()).runOnce();
       expect(sender.sent).toHaveLength(0);
-      expect((await rows(appointment.id))[0].errorCode).toBe('STALE');
+      const confirmations = (await rows(appointment.id)).filter(
+        (n) => n.type === APPOINTMENT_CONFIRMATION,
+      );
+      expect(confirmations.map((n) => n.errorCode)).toEqual(['STALE', 'STALE']);
+    });
+
+    it('an inactive psychologist is skipped while the patient still gets the message', async () => {
+      const other = await fx.psychologist();
+      const patient = await fx.patient();
+      const appointment = await appointments.create(patient.userId, {
+        psychologistId: other.userId,
+        appointmentDate: businessDatePlus(23),
+        startTime: '09:00',
+      });
+      await prisma.user.update({
+        where: { id: other.userId },
+        data: { isActive: false },
+      });
+      const sender = new FakeSender();
+      await new NotificationProcessor(prisma, sender, config()).runOnce();
+      expect(sender.sent.map((m) => m.to)).toEqual([patient.email]);
+      const psy = (await rows(appointment.id)).find(
+        (n) => n.recipientUserId === other.userId,
+      );
+      expect([psy?.status, psy?.errorCode]).toEqual([
+        CANCELLED,
+        'RECIPIENT_INACTIVE',
+      ]);
     });
 
     it('reminders: sent at the due time only with the patient’s opt-in', async () => {
       // Same day, one hour earlier: still in the future when the 09:00 reminder is due.
-      const without = await bookedPatient(22, '08:00', false);
-      const withConsent = await bookedPatient(22, '09:00', true);
+      const without = await bookedPatient(24, '08:00', false);
+      const withConsent = await bookedPatient(24, '09:00', true);
       const sender = new FakeSender();
       await new NotificationProcessor(prisma, sender, config()).runOnce(); // confirmations
       sender.sent = [];
       const due = new Date(
-        appointmentStartUtc(businessDatePlus(22), minutes('09:00')).getTime() -
+        appointmentStartUtc(businessDatePlus(24), minutes('09:00')).getTime() -
           DAY +
           60_000,
       );
@@ -440,16 +553,16 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         [withConsent.patient.email, 'Recordatorio de cita'],
       ]);
       const skipped = (await rows(without.appointment.id)).find(
-        (n) => n.type === NotificationType.APPOINTMENT_REMINDER,
+        (n) => n.type === APPOINTMENT_REMINDER,
       );
       expect([skipped?.status, skipped?.errorCode]).toEqual([
-        NotificationStatus.CANCELLED,
+        CANCELLED,
         'NO_CONSENT',
       ]);
     });
 
     it('staging allowlist: recipients outside it are never contacted', async () => {
-      const { appointment } = await bookedPatient(23);
+      const { appointment } = await bookedPatient(25);
       const sender = new FakeSender();
       await new NotificationProcessor(
         prisma,
@@ -457,11 +570,15 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         config({ recipientAllowlist: ['solo-esta@example.org'] }),
       ).runOnce();
       expect(sender.sent).toHaveLength(0);
-      expect((await rows(appointment.id))[0].errorCode).toBe('NOT_ALLOWLISTED');
+      expect(
+        (await rows(appointment.id))
+          .filter((n) => n.type === APPOINTMENT_CONFIRMATION)
+          .map((n) => n.errorCode),
+      ).toEqual(['NOT_ALLOWLISTED', 'NOT_ALLOWLISTED']);
     });
 
     it('20: batch, daily quota and time budget bound each run', async () => {
-      for (let i = 0; i < 5; i++) await bookedPatient(24 + i, '12:00');
+      for (let i = 0; i < 3; i++) await bookedPatient(26 + i, '12:00');
       const sender = new FakeSender();
       const batch = await new NotificationProcessor(
         prisma,
@@ -485,17 +602,18 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
       expect(timed.stoppedBy).toBe('time_budget');
       expect(timed.released).toBe(timed.claimed);
       const pending = await prisma.notification.findMany({
-        where: {
-          status: NotificationStatus.PENDING,
-          type: NotificationType.APPOINTMENT_CONFIRMATION,
-        },
+        where: { status: PENDING, type: APPOINTMENT_CONFIRMATION },
       });
       expect(pending.every((n) => n.attempts === 0)).toBe(true);
     });
 
     it('recovers a claim left by an interrupted run (expired lease)', async () => {
-      const { appointment } = await bookedPatient(30);
-      const [confirmation] = await rows(appointment.id);
+      const { patient, appointment } = await bookedPatient(30);
+      const confirmation = (await rows(appointment.id)).find(
+        (n) =>
+          n.type === APPOINTMENT_CONFIRMATION &&
+          n.recipientUserId === patient.userId,
+      )!;
       await prisma.notification.update({
         where: { id: confirmation.id },
         data: {
@@ -505,28 +623,43 @@ describe('Email notifications: outbox + processor (Level I, disposable PostgreSQ
         },
       });
       const sender = new FakeSender();
-      const summary = await new NotificationProcessor(
+      const result = await new NotificationProcessor(
         prisma,
         sender,
         config(),
       ).runOnce();
-      expect(summary.recovered).toBe(1);
-      expect(sender.sent).toHaveLength(1);
+      expect(result.recovered).toBe(1);
+      expect(sender.sent.map((m) => m.to).sort()).toEqual(
+        [patient.email, psychologist.email].sort(),
+      );
     });
 
-    it('per-recipient daily cap limits mail to one person', async () => {
-      const { patient, appointment } = await bookedPatient(31);
-      await appointments.reschedule(patient.userId, appointment.id, {
-        appointmentDate: businessDatePlus(31),
-        startTime: '16:00',
-      });
+    it('per-person daily caps: patients and psychologists have their own limit', async () => {
+      // Fresh people: the shared psychologist already received mail in earlier tests.
+      const own = await fx.psychologist();
+      const patient = await fx.patient();
+      for (const day of [31, 32, 33])
+        await appointments.create(patient.userId, {
+          psychologistId: own.userId,
+          appointmentDate: businessDatePlus(day),
+          startTime: '17:00',
+        });
       const sender = new FakeSender();
       await new NotificationProcessor(
         prisma,
         sender,
-        config({ perRecipientDailyLimit: 1 }),
+        config({ perRecipientDailyLimit: 1, psychologistDailyLimit: 2 }),
       ).runOnce();
-      expect(sender.sent).toHaveLength(1);
+      expect(sender.sent.filter((m) => m.to === patient.email)).toHaveLength(1);
+      expect(sender.sent.filter((m) => m.to === own.email)).toHaveLength(2);
+      expect(
+        await prisma.notification.count({
+          where: {
+            errorCode: 'RECIPIENT_DAILY_LIMIT',
+            recipientUserId: { in: [patient.userId, own.userId] },
+          },
+        }),
+      ).toBe(3);
     });
   });
 });

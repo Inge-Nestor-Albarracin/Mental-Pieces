@@ -2,8 +2,9 @@ import { NotificationType } from '../../../../generated/prisma/enums';
 import { formatClock, formatLongDate } from '../notification-time';
 
 // Privacy by design: messages carry ONLY a general text, the date/time and a link to
-// the app. No names, psychologist, diagnoses, reasons, notes or tokens. Subjects are
-// discreet. No remote images or tracking pixels. Every dynamic value is escaped.
+// the app. No names (neither patient nor psychologist), diagnoses, reasons, notes or
+// tokens: the psychologist sees who the patient is inside the app, behind login.
+// Subjects are discreet. No remote images or tracking pixels. Every value is escaped.
 
 export interface TemplateInput {
   type: NotificationType;
@@ -11,6 +12,8 @@ export interface TemplateInput {
   startMinute: number;
   endMinute: number;
   appUrl: string;
+  // Defaults to the patient version.
+  audience?: 'PATIENT' | 'PSYCHOLOGIST';
   test?: boolean;
 }
 
@@ -52,6 +55,34 @@ const COPY: Record<
   },
 };
 
+type Copy = { subject: string; title: string; intro: string; outro: string };
+
+// Psychologist versions: booking, reschedule and cancellation only (no reminders).
+const PSYCHOLOGIST_COPY: Partial<Record<NotificationType, Copy>> = {
+  APPOINTMENT_CONFIRMATION: {
+    subject: 'Nueva cita agendada',
+    title: 'Tienes una nueva cita',
+    intro: 'Un paciente agendó una cita contigo en Mental Pieces:',
+    outro: 'Consulta los detalles en tu agenda.',
+  },
+  APPOINTMENT_CANCELLATION: {
+    subject: 'Cita cancelada',
+    title: 'Una cita fue cancelada',
+    intro: 'El paciente canceló la siguiente cita contigo en Mental Pieces:',
+    outro: 'Ese horario vuelve a quedar disponible en tu agenda.',
+  },
+  APPOINTMENT_RESCHEDULE: {
+    subject: 'Cita con nuevo horario',
+    title: 'Una cita cambió de horario',
+    intro:
+      'El paciente movió una cita contigo en Mental Pieces. Este es el nuevo horario:',
+    outro: 'Consulta los detalles en tu agenda.',
+  },
+};
+
+const PSYCHOLOGIST_FOOTER =
+  'Recibes este correo porque tienes una cuenta de profesional en Mental Pieces. Por privacidad no incluimos datos del paciente: consúltalos en la aplicación.';
+
 const FOOTER =
   'Recibes este correo porque tienes una cuenta en Mental Pieces. Por tu privacidad no incluimos detalles de tu atención. Si no reconoces esta cita, ingresa a tu cuenta.';
 const EMERGENCY =
@@ -67,10 +98,16 @@ export function escapeHtml(value: string): string {
 }
 
 export function renderNotificationEmail(input: TemplateInput): RenderedEmail {
-  const copy = COPY[input.type];
+  const forPsychologist = input.audience === 'PSYCHOLOGIST';
+  const copy: Copy =
+    (forPsychologist && PSYCHOLOGIST_COPY[input.type]) || COPY[input.type];
+  const footer = forPsychologist ? PSYCHOLOGIST_FOOTER : FOOTER;
   const date = formatLongDate(input.appointmentDate);
   const time = `${formatClock(input.startMinute)} – ${formatClock(input.endMinute)} (hora de Colombia)`;
-  const link = `${input.appUrl}/appointments`;
+  const link = forPsychologist
+    ? `${input.appUrl}/psychologist/appointments`
+    : `${input.appUrl}/appointments`;
+  const cta = forPsychologist ? 'Ver mi agenda' : 'Ver mis citas';
   const subject = input.test ? `[Prueba] ${copy.subject}` : copy.subject;
   const e = escapeHtml;
 
@@ -82,10 +119,10 @@ export function renderNotificationEmail(input: TemplateInput): RenderedEmail {
     `Hora: ${time}`,
     '',
     copy.outro,
-    `Ver mis citas: ${link}`,
+    `${cta}: ${link}`,
     '',
     '—',
-    FOOTER,
+    footer,
     EMERGENCY,
   ].join('\n');
 
@@ -118,10 +155,10 @@ export function renderNotificationEmail(input: TemplateInput): RenderedEmail {
 </td></tr>
 <tr><td style="padding:18px 28px 8px;font-family:Arial,Helvetica,sans-serif;">
 <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#4a4540;">${e(copy.outro)}</p>
-<a href="${e(link)}" style="display:inline-block;background:#365b45;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:13px 22px;border-radius:10px;">Ver mis citas</a>
+<a href="${e(link)}" style="display:inline-block;background:#365b45;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:13px 22px;border-radius:10px;">${e(cta)}</a>
 </td></tr>
 <tr><td style="padding:24px 28px 28px;font-family:Arial,Helvetica,sans-serif;">
-<p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:#6b645e;">${e(FOOTER)}</p>
+<p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:#6b645e;">${e(footer)}</p>
 <p style="margin:0;font-size:12px;line-height:1.6;color:#6b645e;">${e(EMERGENCY)}</p>
 </td></tr>
 </table>

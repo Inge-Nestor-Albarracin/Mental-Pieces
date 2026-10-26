@@ -32,6 +32,11 @@ function queued(
         emailRemindersEnabled: consent,
         user: { email: 'paciente@example.test', isActive: true },
       },
+      psychologist: {
+        id: 'psy-1',
+        email: 'psicologo@example.test',
+        isActive: true,
+      },
       ...patch,
     },
   };
@@ -45,7 +50,59 @@ describe('decideDelivery: the live appointment decides, not the original event',
         now,
         DAY,
       ),
-    ).toEqual({ send: true, email: 'paciente@example.test', endMinute: 600 });
+    ).toEqual({
+      send: true,
+      email: 'paciente@example.test',
+      endMinute: 600,
+      audience: 'PATIENT',
+    });
+  });
+
+  it.each([
+    NotificationType.APPOINTMENT_CONFIRMATION,
+    NotificationType.APPOINTMENT_RESCHEDULE,
+  ])('sends the %s copy to the psychologist of the appointment', (type) => {
+    expect(
+      decideDelivery({ ...queued(type), recipientUserId: 'psy-1' }, now, DAY),
+    ).toEqual({
+      send: true,
+      email: 'psicologo@example.test',
+      endMinute: 600,
+      audience: 'PSYCHOLOGIST',
+    });
+  });
+
+  it('psychologist: cancellation yes, reminders no, inactive no', () => {
+    const cancelled = {
+      ...queued(NotificationType.APPOINTMENT_CANCELLATION, {
+        status: AppointmentStatus.CANCELLED,
+      }),
+      recipientUserId: 'psy-1',
+    };
+    expect(decideDelivery(cancelled, now, DAY)).toMatchObject({
+      send: true,
+      audience: 'PSYCHOLOGIST',
+    });
+    expect(
+      decideDelivery(
+        {
+          ...queued(NotificationType.APPOINTMENT_REMINDER),
+          recipientUserId: 'psy-1',
+        },
+        now,
+        DAY,
+      ),
+    ).toEqual({ send: false, reason: 'NOT_FOR_AUDIENCE' });
+    const inactive = queued(NotificationType.APPOINTMENT_CONFIRMATION, {
+      psychologist: {
+        id: 'psy-1',
+        email: 'psicologo@example.test',
+        isActive: false,
+      },
+    });
+    expect(
+      decideDelivery({ ...inactive, recipientUserId: 'psy-1' }, now, DAY),
+    ).toEqual({ send: false, reason: 'RECIPIENT_INACTIVE' });
   });
 
   it.each([

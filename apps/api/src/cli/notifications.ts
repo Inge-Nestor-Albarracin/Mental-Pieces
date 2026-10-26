@@ -3,7 +3,7 @@
 //
 //   node dist/src/cli/notifications.js process       send due messages (one bounded run)
 //   node dist/src/cli/notifications.js verify-smtp   check SMTP login, sends nothing
-//   node dist/src/cli/notifications.js send-test --to <address> --confirm
+//   node dist/src/cli/notifications.js send-test --to <address> --confirm [--audience psychologist]
 //                                                    one sample email to NOTIFICATIONS_TEST_RECIPIENT
 //
 // Configuration comes from the environment (preferably `node --env-file=<private file>`).
@@ -97,6 +97,10 @@ async function sendTest(args: string[]): Promise<number> {
     startMinute: 9 * 60,
     endMinute: 10 * 60,
     appUrl: config.appUrl,
+    audience:
+      argValue(args, '--audience') === 'psychologist'
+        ? 'PSYCHOLOGIST'
+        : 'PATIENT',
     test: true,
   });
   try {

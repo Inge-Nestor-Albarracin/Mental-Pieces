@@ -9,19 +9,32 @@ import { reminderInstant } from './notification-time';
 // inside the same transaction that changes the appointment: if that transaction rolls
 // back (conflict, serialization retry), no notification exists. Nothing is sent here;
 // the cron processor sends later, outside any appointment transaction.
+//
+// Booking, rescheduling and cancelling notify BOTH the patient and the psychologist.
+// The audience is not stored: the processor derives it by comparing recipientUserId
+// with the appointment's patient and psychologist (no extra column, no migration).
 
 export interface AppointmentSlot {
   appointmentId: string;
-  // Always the User behind Patient.userId: never an address supplied by a client.
-  recipientUserId: string;
+  // Users behind Patient.userId and Appointment.psychologistId; never client-supplied.
+  patientUserId: string;
+  psychologistUserId: string;
   appointmentDate: string;
   startMinute: number;
 }
 
 type Tx = Prisma.TransactionClient;
+type Audience = 'patient' | 'psychologist';
 
 const reminderKey = (slot: AppointmentSlot) =>
   `reminder:${slot.appointmentId}:${slot.appointmentDate}:${slot.startMinute}`;
+
+// Patient keys keep their original format; psychologist keys add a prefix.
+const keyFor = (audience: Audience, base: string) =>
+  audience === 'patient' ? base : `psychologist:${base}`;
+
+const recipientOf = (slot: AppointmentSlot, audience: Audience) =>
+  audience === 'patient' ? slot.patientUserId : slot.psychologistUserId;
 
 // Marks every still-pending message of an appointment as no longer valid.
 export async function cancelPendingNotifications(
@@ -41,12 +54,36 @@ export async function cancelPendingNotifications(
   return result.count;
 }
 
+async function queueForBoth(
+  tx: Tx,
+  slot: AppointmentSlot,
+  type: NotificationType,
+  baseKey: string,
+  now: Date,
+) {
+  for (const audience of ['patient', 'psychologist'] as const) {
+    await tx.notification.create({
+      data: {
+        type,
+        recipientUserId: recipientOf(slot, audience),
+        appointmentId: slot.appointmentId,
+        appointmentDate: slot.appointmentDate,
+        startMinute: slot.startMinute,
+        scheduledFor: now,
+        idempotencyKey: keyFor(audience, baseKey),
+      },
+      select: { id: true },
+    });
+  }
+}
+
+// 24 h reminder: patient only, and only sent if the patient opted in.
 async function scheduleReminder(tx: Tx, slot: AppointmentSlot, now: Date) {
   const at = reminderInstant(slot.appointmentDate, slot.startMinute, now);
   if (!at) return; // Less than 24 h left: confirmation only (documented policy).
   const data = {
     type: NotificationType.APPOINTMENT_REMINDER,
-    recipientUserId: slot.recipientUserId,
+    recipientUserId: slot.patientUserId,
     appointmentId: slot.appointmentId,
     appointmentDate: slot.appointmentDate,
     startMinute: slot.startMinute,
@@ -83,18 +120,13 @@ export async function enqueueAppointmentBooked(
   slot: AppointmentSlot,
   now = new Date(),
 ): Promise<void> {
-  await tx.notification.create({
-    data: {
-      type: NotificationType.APPOINTMENT_CONFIRMATION,
-      recipientUserId: slot.recipientUserId,
-      appointmentId: slot.appointmentId,
-      appointmentDate: slot.appointmentDate,
-      startMinute: slot.startMinute,
-      scheduledFor: now,
-      idempotencyKey: `confirmation:${slot.appointmentId}`,
-    },
-    select: { id: true },
-  });
+  await queueForBoth(
+    tx,
+    slot,
+    NotificationType.APPOINTMENT_CONFIRMATION,
+    `confirmation:${slot.appointmentId}`,
+    now,
+  );
   await scheduleReminder(tx, slot, now);
 }
 
@@ -110,20 +142,16 @@ export async function enqueueAppointmentRescheduled(
     where: {
       appointmentId: slot.appointmentId,
       type: NotificationType.APPOINTMENT_RESCHEDULE,
+      recipientUserId: slot.patientUserId,
     },
   });
-  await tx.notification.create({
-    data: {
-      type: NotificationType.APPOINTMENT_RESCHEDULE,
-      recipientUserId: slot.recipientUserId,
-      appointmentId: slot.appointmentId,
-      appointmentDate: slot.appointmentDate,
-      startMinute: slot.startMinute,
-      scheduledFor: now,
-      idempotencyKey: `reschedule:${slot.appointmentId}:${previous + 1}`,
-    },
-    select: { id: true },
-  });
+  await queueForBoth(
+    tx,
+    slot,
+    NotificationType.APPOINTMENT_RESCHEDULE,
+    `reschedule:${slot.appointmentId}:${previous + 1}`,
+    now,
+  );
   await scheduleReminder(tx, slot, now);
 }
 
@@ -137,18 +165,13 @@ export async function enqueueAppointmentCancelled(
     slot.appointmentId,
     'APPOINTMENT_CANCELLED',
   );
-  await tx.notification.create({
-    data: {
-      type: NotificationType.APPOINTMENT_CANCELLATION,
-      recipientUserId: slot.recipientUserId,
-      appointmentId: slot.appointmentId,
-      appointmentDate: slot.appointmentDate,
-      startMinute: slot.startMinute,
-      scheduledFor: now,
-      idempotencyKey: `cancellation:${slot.appointmentId}`,
-    },
-    select: { id: true },
-  });
+  await queueForBoth(
+    tx,
+    slot,
+    NotificationType.APPOINTMENT_CANCELLATION,
+    `cancellation:${slot.appointmentId}`,
+    now,
+  );
 }
 
 // COMPLETED / NO_SHOW: no reminder (or late confirmation) may go out afterwards.

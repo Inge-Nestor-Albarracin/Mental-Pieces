@@ -7,6 +7,8 @@ import { appointmentStartUtc } from './notification-time';
 // Decides, right before sending, whether a queued message is still true. The event that
 // queued it is not trusted: the live appointment is the authority.
 
+export type NotificationAudience = 'PATIENT' | 'PSYCHOLOGIST';
+
 export interface QueuedNotification {
   type: NotificationType;
   recipientUserId: string;
@@ -23,11 +25,17 @@ export interface QueuedNotification {
       emailRemindersEnabled: boolean;
       user: { email: string; isActive: boolean };
     };
+    psychologist: { id: string; email: string; isActive: boolean };
   } | null;
 }
 
 export type SendDecision =
-  | { send: true; email: string; endMinute: number }
+  | {
+      send: true;
+      email: string;
+      endMinute: number;
+      audience: NotificationAudience;
+    }
   | { send: false; reason: string };
 
 export function decideDelivery(
@@ -37,11 +45,21 @@ export function decideDelivery(
 ): SendDecision {
   const appointment = notification.appointment;
   if (!appointment) return { send: false, reason: 'APPOINTMENT_MISSING' };
-  const patient = appointment.patient;
-  // The recipient is always the owner of the appointment, re-derived from the database.
-  if (patient.userId !== notification.recipientUserId)
+
+  // The recipient must still be the patient or the psychologist of THIS appointment,
+  // re-derived from the database (never from the request that queued the message).
+  let audience: NotificationAudience;
+  let recipient: { email: string; isActive: boolean };
+  if (notification.recipientUserId === appointment.patient.userId) {
+    audience = 'PATIENT';
+    recipient = appointment.patient.user;
+  } else if (notification.recipientUserId === appointment.psychologist.id) {
+    audience = 'PSYCHOLOGIST';
+    recipient = appointment.psychologist;
+  } else {
     return { send: false, reason: 'RECIPIENT_MISMATCH' };
-  if (!patient.user.isActive || !patient.user.email)
+  }
+  if (!recipient.isActive || !recipient.email)
     return { send: false, reason: 'RECIPIENT_INACTIVE' };
 
   const sameSlot =
@@ -55,11 +73,14 @@ export function decideDelivery(
 
   switch (notification.type) {
     case NotificationType.APPOINTMENT_REMINDER:
+      // Reminders are a patient opt-in; psychologists use their agenda.
+      if (audience !== 'PATIENT')
+        return { send: false, reason: 'NOT_FOR_AUDIENCE' };
       if (appointment.status !== AppointmentStatus.SCHEDULED || !sameSlot)
         return { send: false, reason: 'STALE' };
       if (startsAt.getTime() <= now.getTime())
         return { send: false, reason: 'TOO_LATE' };
-      if (!patient.emailRemindersEnabled)
+      if (!appointment.patient.emailRemindersEnabled)
         return { send: false, reason: 'NO_CONSENT' };
       break;
     case NotificationType.APPOINTMENT_CONFIRMATION:
@@ -80,8 +101,9 @@ export function decideDelivery(
   }
   return {
     send: true,
-    email: patient.user.email,
+    email: recipient.email,
     endMinute: appointment.endMinute,
+    audience,
   };
 }
 
