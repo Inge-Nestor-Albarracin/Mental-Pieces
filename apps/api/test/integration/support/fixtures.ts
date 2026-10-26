@@ -137,6 +137,14 @@ export class Fixtures {
     });
     const patientIds = { in: patients.map((p) => p.id) };
     await this.prisma.auditLog.deleteMany({ where: { actorUserId: users } });
+    await this.prisma.notification.deleteMany({
+      where: {
+        OR: [
+          { recipientUserId: users },
+          { appointment: { psychologistId: users } },
+        ],
+      },
+    });
     await this.prisma.clinicalSessionNote.deleteMany({
       where: { OR: [{ psychologistId: users }, { patientId: patientIds }] },
     });

@@ -32,8 +32,17 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
     create: jest.fn<Promise<unknown>, [Prisma.AppointmentCreateArgs]>(),
     update: jest.fn<Promise<unknown>, [Prisma.AppointmentUpdateArgs]>(),
   };
+  // Outbox writes happen inside the same transaction (content covered by integration tests).
+  const notification = {
+    create: jest.fn().mockResolvedValue({ id: 'n1' }),
+    findUnique: jest.fn().mockResolvedValue(null),
+    update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    count: jest.fn().mockResolvedValue(0),
+  };
   const database = {
     appointment,
+    notification,
     patient: { findUnique: jest.fn() },
     user: {
       findUnique: jest.fn<
@@ -55,7 +64,10 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
     careRelationship: { findFirst: jest.fn(), create: jest.fn() },
     $transaction: jest.fn(
       (operation: (client: Prisma.TransactionClient) => Promise<unknown>) =>
-        operation({ appointment } as unknown as Prisma.TransactionClient),
+        operation({
+          appointment,
+          notification,
+        } as unknown as Prisma.TransactionClient),
     ),
   };
 

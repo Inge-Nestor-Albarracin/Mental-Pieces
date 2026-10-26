@@ -151,6 +151,7 @@ export interface PatientProfile {
   genderOther: string | null;
   phone: string | null;
   isProfileComplete: boolean;
+  emailRemindersEnabled: boolean;
 }
 
 export function getMyProfile(token: string): Promise<PatientProfile> {
@@ -520,5 +521,16 @@ export function createInternalUser(
   return authenticatedRequest(token, '/staff', 'No fue posible crear el usuario.', {
     method: 'POST',
     body: JSON.stringify({ role, fullName, email, password, phone, position }),
+  });
+}
+
+// Optional 24 h email reminders; the server records when the patient changed it.
+export function updateEmailReminders(
+  token: string,
+  emailReminders: boolean,
+): Promise<{ emailReminders: boolean; updatedAt: string | null }> {
+  return authenticatedRequest(token, '/patients/me/notification-preferences', 'No fue posible guardar tu preferencia.', {
+    method: 'PATCH',
+    body: JSON.stringify({ emailReminders }),
   });
 }

@@ -25,6 +25,11 @@ import {
   isCalendarDate,
   weekDayOf,
 } from './appointment-time';
+import {
+  enqueueAppointmentBooked,
+  enqueueAppointmentCancelled,
+  enqueueAppointmentRescheduled,
+} from '../notifications/notification-outbox';
 
 const APPOINTMENT_DURATION_MINUTES = 60;
 // Anti-abuse: one patient cannot block a psychologist's whole schedule.
@@ -182,6 +187,14 @@ export class AppointmentsService {
         },
       });
 
+      // Outbox in the same transaction: no notification exists unless the booking commits.
+      await enqueueAppointmentBooked(tx, {
+        appointmentId: created.id,
+        recipientUserId: patientUserId,
+        appointmentDate: created.appointmentDate,
+        startMinute: created.startMinute,
+      });
+
       return {
         id: created.id,
         appointmentDate: created.appointmentDate,
@@ -305,30 +318,40 @@ export class AppointmentsService {
 
     const reason = dto.reason?.trim();
 
-    const updated = await this.prisma.appointment
-      .update({
-        where: {
-          id: appointment.id,
-          patientId: patient.id,
-          status: AppointmentStatus.SCHEDULED,
-          // A reschedule after the read invalidates the temporal check.
-          appointmentDate: appointment.appointmentDate,
-          startMinute: appointment.startMinute,
-        },
-        data: {
-          status: AppointmentStatus.CANCELLED,
-          cancelledAt: new Date(),
-          cancellationReason: reason || null,
-        },
-        select: {
-          id: true,
-          appointmentDate: true,
-          startMinute: true,
-          endMinute: true,
-          status: true,
-          cancelledAt: true,
-          cancellationReason: true,
-        },
+    const updated = await this.prisma
+      .$transaction(async (tx) => {
+        const row = await tx.appointment.update({
+          where: {
+            id: appointment.id,
+            patientId: patient.id,
+            status: AppointmentStatus.SCHEDULED,
+            // A reschedule after the read invalidates the temporal check.
+            appointmentDate: appointment.appointmentDate,
+            startMinute: appointment.startMinute,
+          },
+          data: {
+            status: AppointmentStatus.CANCELLED,
+            cancelledAt: new Date(),
+            cancellationReason: reason || null,
+          },
+          select: {
+            id: true,
+            appointmentDate: true,
+            startMinute: true,
+            endMinute: true,
+            status: true,
+            cancelledAt: true,
+            cancellationReason: true,
+          },
+        });
+        // Same transaction: pending reminders are dropped and the cancellation queued.
+        await enqueueAppointmentCancelled(tx, {
+          appointmentId: row.id,
+          recipientUserId: patientUserId,
+          appointmentDate: row.appointmentDate,
+          startMinute: row.startMinute,
+        });
+        return row;
       })
       .catch((error: unknown) => {
         if (
@@ -495,6 +518,14 @@ export class AppointmentsService {
           endMinute: true,
           status: true,
         },
+      });
+
+      // Old reminders are invalidated; the change and the new reminder are queued.
+      await enqueueAppointmentRescheduled(tx, {
+        appointmentId: updated.id,
+        recipientUserId: patientUserId,
+        appointmentDate: updated.appointmentDate,
+        startMinute: updated.startMinute,
       });
 
       return {

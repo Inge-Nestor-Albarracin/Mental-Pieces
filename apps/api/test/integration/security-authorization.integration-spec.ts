@@ -975,6 +975,104 @@ describe('Authorization / BOLA-IDOR over HTTP with a disposable PostgreSQL (Leve
     });
   });
 
+  describe('email notification preferences and exposure', () => {
+    it('N1: the patient opts in explicitly; invalid bodies and other roles are rejected', async () => {
+      const path = '/patients/me/notification-preferences';
+      const before = await http()
+        .get('/patients/me')
+        .set('Authorization', auth(patientA));
+      note(
+        {
+          id: 'N1a',
+          endpoint: 'GET /patients/me',
+          role: 'PATIENT A',
+          operation: 'preferencia por defecto',
+          expected: 200,
+          persisted: 'emailRemindersEnabled=false',
+        },
+        before,
+        (before.body as { emailRemindersEnabled?: boolean })
+          .emailRemindersEnabled === false &&
+          !/smtp|password/i.test(before.text),
+      );
+      const on = await http()
+        .patch(path)
+        .set('Authorization', auth(patientA))
+        .send({ emailReminders: true });
+      const stored = await prisma.patient.findUniqueOrThrow({
+        where: { id: patientA.patientId },
+        select: { emailRemindersEnabled: true, emailRemindersUpdatedAt: true },
+      });
+      note(
+        {
+          id: 'N1b',
+          endpoint: 'PATCH ' + path,
+          role: 'PATIENT A',
+          operation: 'activar recordatorios',
+          expected: 200,
+          persisted: 'true + fecha',
+        },
+        on,
+        stored.emailRemindersEnabled &&
+          stored.emailRemindersUpdatedAt instanceof Date,
+      );
+      const invalid = await http()
+        .patch(path)
+        .set('Authorization', auth(patientA))
+        .send({ emailReminders: 'si', userId: patientB.userId });
+      note(
+        {
+          id: 'N1c',
+          endpoint: 'PATCH ' + path,
+          role: 'PATIENT A',
+          operation: 'valor inválido + userId',
+          expected: 400,
+          persisted: 'sin cambio',
+        },
+        invalid,
+      );
+      const staffCall = await http()
+        .patch(path)
+        .set('Authorization', auth(staff))
+        .send({ emailReminders: true });
+      note(
+        {
+          id: 'N1d',
+          endpoint: 'PATCH ' + path,
+          role: 'STAFF',
+          operation: 'cambiar preferencia',
+          expected: 403,
+          persisted: 'n/a',
+        },
+        staffCall,
+      );
+    });
+
+    it('N2: there is no HTTP route that sends email', async () => {
+      for (const path of [
+        '/notifications/send',
+        '/send-email',
+        '/notifications',
+      ]) {
+        const response = await http()
+          .post(path)
+          .set('Authorization', auth(admin))
+          .send({ to: 'x@example.org' });
+        note(
+          {
+            id: `N2 ${path}`,
+            endpoint: `POST ${path}`,
+            role: 'ADMIN',
+            operation: 'enviar correo arbitrario',
+            expected: 404,
+            persisted: 'n/a',
+          },
+          response,
+        );
+      }
+    });
+  });
+
   describe('exposure and rate limiting', () => {
     it('S1: no response collected in this suite contains password hashes or note text of others', () => {
       const joined = bodies.join('\n');

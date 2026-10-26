@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { ApiErrorNotice } from '../../components/api-error-notice';
 import { BackLink, PageIntro } from '../../components/app-shell';
-import { getMyProfile, type PatientProfile } from '../../lib/api';
+import { getMyProfile, updateEmailReminders, type PatientProfile } from '../../lib/api';
 import { formatBirthDate, genderLabel } from '../../lib/profile';
 import { portalError, withSession } from '../../lib/psychologist';
 
@@ -66,6 +66,11 @@ export default function ProfilePage() {
             </dl>
           </section>
 
+          <EmailRemindersCard
+            enabled={profile.emailRemindersEnabled}
+            onChange={(value) => setProfile((current) => current && { ...current, emailRemindersEnabled: value })}
+          />
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link href="/dashboard" className="btn btn-secondary">Volver al inicio</Link>
             <Link href="/appointments" className="btn btn-quiet">Ver mis citas</Link>
@@ -82,5 +87,56 @@ function ProfileItem({ label, value }: { label: string; value: string | null }) 
       <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className={`mt-1 break-words font-medium ${value ? 'text-foreground' : 'italic text-muted-foreground'}`}>{value || 'Sin registrar'}</dd>
     </div>
+  );
+}
+
+// Explicit opt-in: off by default, changed only by the patient's own click.
+function EmailRemindersCard({ enabled, onChange }: { enabled: boolean; onChange: (value: boolean) => void }) {
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [failed, setFailed] = useState(false);
+
+  async function toggle() {
+    setSaving(true);
+    setMessage('');
+    setFailed(false);
+    try {
+      const result = await withSession((token) => updateEmailReminders(token, !enabled));
+      onChange(result.emailReminders);
+      setMessage(result.emailReminders ? 'Recordatorios activados.' : 'Recordatorios desactivados.');
+    } catch {
+      setFailed(true);
+      setMessage('No fue posible guardar tu preferencia. Intenta de nuevo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="email-reminders" className="surface p-5 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-xl">
+          <h2 id="email-reminders" className="font-serif text-xl text-foreground">Recordatorios por correo</h2>
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            Si los activas, te enviaremos un correo 24 horas antes de cada cita con la fecha y la hora, sin detalles de tu atención.
+            La confirmación, los cambios y las cancelaciones de tus citas siempre se envían a tu correo.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-labelledby="email-reminders"
+          onClick={() => void toggle()}
+          disabled={saving}
+          className={`btn min-w-36 ${enabled ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          {saving ? 'Guardando...' : enabled ? 'Activados' : 'Desactivados'}
+        </button>
+      </div>
+      {message && (
+        <p role="status" className={`mt-3 text-sm ${failed ? 'text-red-800' : 'text-forest'}`}>{message}</p>
+      )}
+    </section>
   );
 }

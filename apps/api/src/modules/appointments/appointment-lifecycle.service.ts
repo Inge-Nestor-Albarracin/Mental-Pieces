@@ -13,6 +13,7 @@ import {
 } from '../../../generated/prisma/enums';
 import { PrismaService } from '../../database/prisma.service';
 import { formatAppointmentTime, hasAppointmentEnded } from './appointment-time';
+import { closeAppointmentNotifications } from '../notifications/notification-outbox';
 
 type FinalStatus =
   | typeof AppointmentStatus.COMPLETED
@@ -86,6 +87,8 @@ export class AppointmentLifecycleService {
               },
               select: { id: true },
             });
+            // A closed appointment must not receive a reminder afterwards.
+            await closeAppointmentNotifications(tx, id);
             return {
               id: appointment.id,
               appointmentDate: appointment.appointmentDate,

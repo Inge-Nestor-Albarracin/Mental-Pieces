@@ -58,6 +58,7 @@ model User {
   careRelationships CareRelationship[]    @relation("CarePsychologist")
   clinicalNotes     ClinicalSessionNote[] @relation("NoteAuthor")
   auditLogs         AuditLog[]
+  notifications     Notification[]
 }
 
 model Patient {
@@ -72,6 +73,11 @@ model Patient {
   address     String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  // Optional 24 h email reminders: off until the patient turns them on themselves.
+  // The timestamp records when the choice was last changed (on or off).
+  emailRemindersEnabled   Boolean   @default(false)
+  emailRemindersUpdatedAt DateTime?
 
   user              User                  @relation(fields: [userId], references: [id])
   appointments      Appointment[]
@@ -120,9 +126,10 @@ model Appointment {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  patient      Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  psychologist User                 @relation("PsychologistAppointments", fields: [psychologistId], references: [id], onDelete: Restrict)
-  clinicalNote ClinicalSessionNote?
+  patient       Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  psychologist  User                 @relation("PsychologistAppointments", fields: [psychologistId], references: [id], onDelete: Restrict)
+  clinicalNote  ClinicalSessionNote?
+  notifications Notification[]
 
   @@index([patientId, appointmentDate])
   @@index([psychologistId, appointmentDate, status])
@@ -185,4 +192,59 @@ model AuditLog {
 
   @@index([resourceType, resourceId, createdAt])
   @@index([actorUserId, createdAt])
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_REMINDER
+  APPOINTMENT_CANCELLATION
+  APPOINTMENT_RESCHEDULE
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+// ACCEPTED = the SMTP server accepted the message. It does NOT prove delivery to the
+// inbox: the message can still bounce later.
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  ACCEPTED
+  FAILED
+  CANCELLED
+}
+
+// Transactional outbox: rows are written in the same transaction as the appointment
+// change; a separate cron process sends them later. Never stores message bodies.
+model Notification {
+  id                String              @id @default(cuid())
+  type              NotificationType
+  channel           NotificationChannel @default(EMAIL)
+  recipientUserId   String
+  appointmentId     String
+  // Slot the message talks about; re-checked against the live appointment before sending.
+  appointmentDate   String
+  startMinute       Int
+  status            NotificationStatus  @default(PENDING)
+  scheduledFor      DateTime
+  // One logical message per key: makes enqueueing idempotent across retries.
+  idempotencyKey    String              @unique
+  attempts          Int                 @default(0)
+  lastAttemptAt     DateTime?
+  // Claim lease for the processor; an expired lease means the run was interrupted.
+  lockedUntil       DateTime?
+  acceptedAt        DateTime?
+  providerMessageId String?
+  // Sanitized code only (e.g. SMTP_550, ETIMEDOUT, STALE); never message text or addresses.
+  errorCode         String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  recipient   User        @relation(fields: [recipientUserId], references: [id], onDelete: Restrict)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([status, scheduledFor])
+  @@index([appointmentId, status])
+  @@index([recipientUserId, acceptedAt])
 }

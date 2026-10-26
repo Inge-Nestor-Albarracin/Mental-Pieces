@@ -53,7 +53,10 @@ describe('Appointment lifecycle HTTP (no real database)', () => {
     update: jest.fn<Promise<unknown>, [Prisma.AppointmentUpdateArgs]>(),
   };
   const auditLog = { create: jest.fn() };
-  const tx = { appointment, auditLog };
+  const notification = {
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+  };
+  const tx = { appointment, auditLog, notification };
   const database = {
     ...tx,
     patient: { findUnique: jest.fn() },

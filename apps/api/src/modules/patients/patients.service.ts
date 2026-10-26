@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
+
 import { Gender } from '../../../generated/prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
@@ -25,6 +27,7 @@ export class PatientsService {
         gender: true,
         genderOther: true,
         phone: true,
+        emailRemindersEnabled: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -39,6 +42,32 @@ export class PatientsService {
     return {
       ...patient,
       isProfileComplete: this.isProfileComplete(patient),
+    };
+  }
+
+  // Records the patient's own choice and when it was made (verifiable consent).
+  async updateNotificationPreferences(userId: string, emailReminders: boolean) {
+    const updated = await this.prisma.patient
+      .update({
+        where: { userId },
+        data: {
+          emailRemindersEnabled: emailReminders,
+          emailRemindersUpdatedAt: new Date(),
+        },
+        select: { emailRemindersEnabled: true, emailRemindersUpdatedAt: true },
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        ) {
+          throw new NotFoundException('No se encontró el perfil del paciente.');
+        }
+        throw error;
+      });
+    return {
+      emailReminders: updated.emailRemindersEnabled,
+      updatedAt: updated.emailRemindersUpdatedAt,
     };
   }
 
