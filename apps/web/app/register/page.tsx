@@ -334,10 +334,13 @@ export default function RegisterPage() {
                   >
                     Política de Tratamiento de Datos Personales
                   </a>{' '}
-                  de Mental Pieces y autorizo el tratamiento de mis datos
-                  para crear y administrar mi cuenta, gestionar mi perfil y
-                  permitir el uso de las funcionalidades solicitadas,
-                  conforme a las finalidades informadas.
+                  de Mental Pieces y autorizo de manera previa, expresa e
+                  informada a MENTAL PIECES BY PAULA SARMIENTO S A S para
+                  recolectar, almacenar y utilizar mis datos personales con
+                  la finalidad de crear y administrar mi cuenta, gestionar mi
+                  perfil y permitir el acceso a las funcionalidades
+                  solicitadas, conforme a las condiciones informadas en dicha
+                  política.
                 </label>
               </div>
 

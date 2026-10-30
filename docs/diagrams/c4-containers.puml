@@ -1,0 +1,32 @@
+@startuml c4-containers
+' Mental Pieces — Modelo C4, nivel 2: diagrama de contenedores (2026-10-29)
+!include <C4/C4_Container>
+
+skinparam defaultFontName "Segoe UI"
+LAYOUT_TOP_DOWN()
+HIDE_STEREOTYPE()
+
+title Mental Pieces — C4 Nivel 2: contenedores
+
+Person(patient, "Paciente", "Agenda y administra sus citas.")
+Person(psychologist, "Psicólogo(a)", "Atiende y hace seguimiento clínico.")
+Person(admin, "Administrador(a)", "Administra usuarios y asignaciones.")
+
+System_Boundary(mp, "Mental Pieces") {
+  Container(web, "Aplicación web (PWA)", "Next.js 16, React 19, Tailwind 4", "Interfaz responsiva por rol. Se sirve desde mentalpieces.site; guarda el JWT en sessionStorage y tiene service worker con página sin conexión.")
+  Container(api, "API REST", "NestJS 11, Node.js 22", "Expone la lógica de negocio en api.mentalpieces.site: autenticación JWT, control por roles, límites de peticiones, citas, disponibilidad, seguimiento clínico y autorización de datos.")
+  Container(worker, "Procesador de notificaciones", "CLI Node.js + cron cada 5 min", "Toma correos pendientes de la cola con bloqueo por arrendamiento, los envía y registra el resultado.")
+  ContainerDb(db, "Base de datos", "PostgreSQL (Supabase), Prisma 7", "Usuarios, pacientes, disponibilidad, citas, relaciones clínicas, notas, auditoría, cola de notificaciones y evidencia de consentimiento. RLS activo.")
+}
+
+System_Ext(smtp, "Servidor de correo Hostinger", "smtp.hostinger.com:465")
+
+Rel(patient, web, "Usa", "HTTPS")
+Rel(psychologist, web, "Usa", "HTTPS")
+Rel(admin, web, "Usa", "HTTPS")
+Rel(web, api, "Llama", "HTTPS, JSON, Bearer JWT")
+Rel(api, db, "Lee y escribe; inserta notificaciones en la misma transacción", "Prisma, TCP + TLS")
+Rel(worker, db, "Reclama y actualiza notificaciones", "FOR UPDATE SKIP LOCKED")
+Rel(worker, smtp, "Envía correos", "SMTPS")
+
+@enduml

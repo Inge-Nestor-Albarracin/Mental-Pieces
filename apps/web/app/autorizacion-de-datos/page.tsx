@@ -83,9 +83,10 @@ export default function DataConsentPage() {
               onChange={(event) => setAccepted(event.target.checked)}
               aria-invalid={formError === ACCEPTANCE_REQUIRED} className="mt-0.5 h-5 w-5 shrink-0 accent-forest" />
             <label htmlFor="acceptDataPolicy" className="text-sm leading-relaxed">
-              He leído la Política de Tratamiento de Datos Personales de Mental Pieces y autorizo el tratamiento de mis datos para
-              crear y administrar mi cuenta, gestionar mi perfil y permitir el uso de las funcionalidades solicitadas, conforme a
-              las finalidades informadas.
+              He leído la Política de Tratamiento de Datos Personales de Mental Pieces y autorizo de manera previa, expresa e
+              informada a MENTAL PIECES BY PAULA SARMIENTO S A S para recolectar, almacenar y utilizar mis datos personales con la
+              finalidad de crear y administrar mi cuenta, gestionar mi perfil y permitir el acceso a las funcionalidades
+              solicitadas, conforme a las condiciones informadas en dicha política.
             </label>
           </div>
 

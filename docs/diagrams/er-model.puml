@@ -1,0 +1,176 @@
+@startuml mental-pieces-modelo-er
+' Mental Pieces — Modelo entidad-relación (2026-10-29)
+' Generado a partir de apps/api/prisma/schema.prisma (11 tablas). Notación de pata de gallo.
+' PK = clave primaria, FK = clave foránea, UQ = valor único, ? = opcional.
+
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam linetype ortho
+skinparam nodesep 45
+skinparam ranksep 60
+skinparam ArrowColor #4A5A50
+skinparam class {
+  BackgroundColor #FFFDF9
+  BorderColor #365B45
+  BorderThickness 1.4
+  HeaderBackgroundColor #E3EDE5
+}
+hide circle
+hide methods
+
+title Mental Pieces — Modelo entidad-relación (PostgreSQL)
+
+entity "User\n(cuenta de acceso)" as User #F7F4FB {
+  * id : text <<PK>>
+  --
+  * email : text <<UQ>>
+  * passwordHash : text (bcrypt)
+  * role : UserRole
+  * isActive : boolean
+  * createdAt / updatedAt : timestamp
+}
+
+entity "Patient\n(perfil de paciente)" as Patient #EEF6F0 {
+  * id : text <<PK>>
+  --
+  * userId : text <<FK, UQ>>
+  * mrn : text <<UQ>>
+  fullName : text ?
+  birthDate : date ?
+  gender : Gender ?
+  genderOther : text ?
+  phone : text ?
+  address : text ?
+  * emailRemindersEnabled : boolean
+  emailRemindersUpdatedAt : timestamp ?
+}
+
+entity "StaffProfile\n(perfil interno)" as Staff #FBF3EA {
+  * id : text <<PK>>
+  --
+  * userId : text <<FK, UQ>>
+  * fullName : text
+  phone : text ?
+  position : text ?
+}
+
+entity "PsychologistAvailability\n(disponibilidad semanal)" as Availability #EAF4FA {
+  * id : text <<PK>>
+  --
+  * psychologistId : text <<FK>>
+  * dayOfWeek : WeekDay
+  * startMinute : int
+  * endMinute : int
+  * isActive : boolean
+  ..
+  UQ (psychologistId, dayOfWeek,
+      startMinute, endMinute)
+}
+
+entity "Appointment\n(cita)" as Appointment #EEF6F0 {
+  * id : text <<PK>>
+  --
+  * patientId : text <<FK>>
+  * psychologistId : text <<FK>>
+  * appointmentDate : text (AAAA-MM-DD)
+  * startMinute : int
+  * endMinute : int (inicio + 60)
+  * status : AppointmentStatus
+  cancelledAt : timestamp ?
+  cancellationReason : text ?
+}
+
+entity "CareRelationship\n(relación clínica)" as Care #F2EEF8 {
+  * id : text <<PK>>
+  --
+  * patientId : text <<FK>>
+  * psychologistId : text <<FK>>
+  * isActive : boolean
+  * assignedAt : timestamp
+  endedAt : timestamp ?
+  ..
+  UQ (patientId, psychologistId)
+}
+
+entity "ClinicalSessionNote\n(nota clínica)" as Note #FBEDEC {
+  * id : text <<PK>>
+  --
+  * patientId : text <<FK>>
+  * psychologistId : text <<FK>>
+  appointmentId : text <<FK, UQ>> ?
+  * content : text (1–10 000)
+}
+
+entity "AuditLog\n(auditoría clínica)" as Audit #FBF8E6 {
+  * id : text <<PK>>
+  --
+  * actorUserId : text <<FK>>
+  * action : ClinicalAuditAction
+  * resourceType : text
+  * resourceId : text
+  * createdAt : timestamp
+}
+
+entity "Notification\n(cola de correos)" as Notification #EAF4FA {
+  * id : text <<PK>>
+  --
+  * recipientUserId : text <<FK>>
+  * appointmentId : text <<FK>>
+  * type : NotificationType
+  * channel : NotificationChannel (EMAIL)
+  * appointmentDate / startMinute
+  * status : NotificationStatus
+  * scheduledFor : timestamp
+  * idempotencyKey : text <<UQ>>
+  * attempts : int
+  lastAttemptAt / lockedUntil / acceptedAt ?
+  providerMessageId : text ?
+  errorCode : text ?
+}
+
+entity "LegalDocument\n(política publicada)" as Legal #F4F4F4 {
+  * id : text <<PK>>
+  --
+  * kind : LegalDocumentKind
+  * version : text
+  * title : text
+  * body : text
+  * sha256 : text
+  * requiresReacceptance : boolean
+  * publishedAt : timestamp
+  ..
+  UQ (kind, version)
+}
+
+entity "DataProcessingConsent\n(evidencia de autorización)" as Consent #F4F4F4 {
+  * id : text <<PK>>
+  --
+  * userId : text <<FK>>
+  * documentId : text <<FK>>
+  * purpose : ConsentPurpose
+  * source : ConsentSource
+  * documentVersion : text
+  * documentSha256 : text
+  * acceptedAt : timestamp (servidor)
+  ..
+  UQ (userId, documentId, purpose)
+}
+
+User ||--o| Patient : "tiene perfil de paciente"
+User ||--o| Staff : "tiene perfil interno"
+User ||--o{ Availability : "publica (psicólogo)"
+User ||--o{ Appointment : "atiende (psicólogo)"
+Patient ||--o{ Appointment : "agenda"
+Patient ||--o{ Care : "es asignado"
+User ||--o{ Care : "tiene asignados (psicólogo)"
+Care ||--o{ Note : "autoriza (patientId + psychologistId)"
+Appointment |o--o| Note : "nota principal (solo REALIZADA)"
+User ||--o{ Note : "es autor (psicólogo)"
+User ||--o{ Audit : "actor"
+User ||--o{ Notification : "destinatario"
+Appointment ||--o{ Notification : "origina"
+User ||--o{ Consent : "acepta"
+Legal ||--o{ Consent : "es aceptado en"
+
+@enduml

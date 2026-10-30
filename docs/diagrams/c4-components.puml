@@ -1,0 +1,57 @@
+@startuml c4-components
+' Mental Pieces — Modelo C4, nivel 3: componentes de la API REST (2026-10-29)
+' Cada componente corresponde a un módulo NestJS de apps/api/src/modules.
+!include <C4/C4_Component>
+
+skinparam defaultFontName "Segoe UI"
+LAYOUT_TOP_DOWN()
+HIDE_STEREOTYPE()
+
+title Mental Pieces — C4 Nivel 3: componentes de la API REST
+
+Container(web, "Aplicación web (PWA)", "Next.js 16", "Cliente de la API.")
+ContainerDb(db, "Base de datos", "PostgreSQL (Supabase)")
+Container(worker, "Procesador de notificaciones", "CLI Node.js + cron")
+
+Container_Boundary(api, "API REST (NestJS 11)") {
+  Component(guards, "Seguridad transversal", "Helmet, CORS, ValidationPipe, ThrottlerGuard, JwtAuthGuard, RolesGuard", "Valida cada petición: cabeceras, origen, datos de entrada, límite de peticiones, token y rol.")
+  Component(auth, "AuthModule", "Controlador + servicio", "Inicio de sesión (bcrypt), emisión de JWT y consulta de la sesión actual.")
+  Component(legal, "LegalModule", "Controlador + servicio", "Publica la política de tratamiento de datos vigente (versión y huella SHA-256).")
+  Component(users, "UsersModule", "Controlador + servicio", "Registro público de pacientes: crea la cuenta, el perfil y la evidencia de autorización de datos en una transacción.")
+  Component(staff, "StaffModule", "Controlador + servicio", "Creación y consulta de cuentas internas (psicólogos y personal) por el administrador.")
+  Component(patients, "PatientsModule", "Controlador + servicio", "Perfil del paciente, aceptación de nuevas versiones de la política, perfil obligatorio y preferencia de recordatorios.")
+  Component(availability, "AvailabilityModule", "Controlador + servicio", "Horarios semanales del psicólogo y cálculo de espacios libres.")
+  Component(appointments, "AppointmentsModule", "Controlador + servicio", "Agendar, reprogramar, cancelar y marcar asistencia; valida contra la disponibilidad publicada en transacciones SERIALIZABLE con reintentos.")
+  Component(clinical, "ClinicalModule", "Controlador + servicio", "Asignaciones paciente-psicólogo, notas clínicas, auditoría y alertas de inactividad.")
+  Component(notifications, "NotificationsModule", "Servicio + plantillas", "Encola correos (outbox) y los procesa con reintentos e idempotencia.")
+  Component(prisma, "DatabaseModule", "PrismaService (adapter pg)", "Acceso a datos y ejecución de transacciones.")
+}
+
+Rel(web, guards, "Peticiones HTTPS", "JSON, Bearer JWT")
+Rel(guards, auth, "Enruta")
+Rel(guards, legal, "Enruta")
+Rel(guards, users, "Enruta")
+Rel(guards, staff, "Enruta")
+Rel(guards, patients, "Enruta")
+Rel(guards, availability, "Enruta")
+Rel(guards, appointments, "Enruta")
+Rel(guards, clinical, "Enruta")
+
+Rel(users, legal, "Obtiene la política vigente")
+Rel(patients, legal, "Obtiene la política vigente")
+Rel(appointments, patients, "Exige perfil completo y consentimiento")
+Rel(appointments, notifications, "Encola correos en la misma transacción")
+Rel(worker, notifications, "Ejecuta el procesamiento")
+
+Rel(auth, prisma, "Usa")
+Rel(legal, prisma, "Usa")
+Rel(users, prisma, "Usa")
+Rel(staff, prisma, "Usa")
+Rel(patients, prisma, "Usa")
+Rel(availability, prisma, "Usa")
+Rel(appointments, prisma, "Usa")
+Rel(clinical, prisma, "Usa")
+Rel(notifications, prisma, "Usa")
+Rel(prisma, db, "Lee y escribe", "TCP + TLS")
+
+@enduml

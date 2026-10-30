@@ -1,0 +1,215 @@
+Política de Tratamiento de Datos Personales
+MENTAL PIECES
+Versión: 1.0
+Fecha de entrada en vigencia: 30/10/2026
+Sitio web: https://mentalpieces.site
+
+1. Introducción
+
+Mental Pieces reconoce la importancia de proteger la privacidad, confidencialidad y seguridad de la información personal de sus usuarios.
+
+En cumplimiento de lo establecido en el artículo 15 de la Constitución Política de Colombia, la Ley Estatutaria 1581 de 2012, el Decreto 1074 de 2015 y demás normas aplicables en materia de protección de datos personales, se establece la presente Política de Tratamiento de Datos Personales.
+
+Esta política tiene como finalidad informar a los usuarios sobre las condiciones de recolección, almacenamiento, utilización, consulta, actualización, conservación y eliminación de los datos personales suministrados durante el registro y el uso de la plataforma Mental Pieces.
+
+El tratamiento de la información se realizará de conformidad con los principios de legalidad, finalidad, libertad, veracidad, transparencia, acceso y circulación restringida, seguridad y confidencialidad.
+
+2. Identificación del responsable del tratamiento
+
+El responsable del tratamiento es la persona natural o jurídica que determina las finalidades y los medios del tratamiento de los datos personales.
+
+Nombre o razón social: MENTAL PIECES BY PAULA SARMIENTO S A S
+Nombre de la plataforma: MentalPieces.site
+NIT: 901911280
+Domicilio: Bogotá, Colombia
+Dirección: Cr 15 No. 122 - 45
+Correo electrónico: paulasarmientopsicologia@gmail.com
+Teléfono: 3218181006
+
+El responsable se compromete a gestionar los datos personales conforme a las finalidades informadas y a atender las solicitudes que presenten los titulares en ejercicio de sus derechos.
+
+3. Alcance de la política
+
+Esta política se aplica a los datos personales recolectados mediante el proceso de registro de pacientes, la administración de cuentas, la actualización de perfiles y las funcionalidades operativas ofrecidas por Mental Pieces.
+
+Comprende la información suministrada directamente por el usuario y los registros técnicos que resulten necesarios para el funcionamiento y la seguridad de la plataforma.
+
+Cuando se requiera recolectar información clínica o datos sensibles de salud para la prestación de servicios psicológicos, se proporcionará información adicional y se gestionarán las autorizaciones y consentimientos que correspondan de acuerdo con la legislación aplicable.
+
+4. Datos personales recolectados
+
+Durante el registro inicial y la posterior actualización del perfil, Mental Pieces podrá recolectar las siguientes categorías de datos:
+
+Datos de acceso:
+• Correo electrónico.
+• Contraseña, almacenada mediante mecanismos de hash y no en texto plano.
+• Identificador interno de usuario.
+
+Datos de identificación y contacto:
+• Nombre completo.
+• Fecha de nacimiento.
+• Número de teléfono.
+• Género, incluida la posibilidad de preferir no especificarlo.
+
+Datos relacionados con el funcionamiento de la plataforma:
+• Identificador interno del paciente.
+• Fecha de creación y actualización de la cuenta.
+• Registro de aceptación de la Política de Tratamiento de Datos Personales.
+• Fecha, hora y versión de la política aceptada.
+• Información operativa de citas, como fecha, hora, estado de reserva y profesional seleccionado.
+• Preferencias de recordatorios por correo electrónico.
+• Información técnica necesaria para gestionar la sesión y proteger el acceso.
+
+La plataforma procurará recolectar únicamente los datos necesarios para cumplir las finalidades informadas.
+
+5. Finalidades del tratamiento
+
+Los datos personales serán utilizados para las siguientes finalidades:
+
+1. Crear y administrar cuentas de pacientes.
+2. Identificar y autenticar a los usuarios que ingresan a la plataforma.
+3. Permitir el registro, consulta y actualización de los perfiles personales.
+4. Verificar que los pacientes cumplan los requisitos establecidos para utilizar las funcionalidades de agendamiento.
+5. Gestionar la programación, consulta, cancelación y reprogramación de citas psicológicas.
+6. Facilitar la comunicación operativa relacionada con las citas y sus modificaciones.
+7. Enviar confirmaciones, avisos de cancelación y modificaciones de las reservas, cuando el servicio de correo se encuentre habilitado.
+8. Gestionar recordatorios opcionales de citas de acuerdo con las preferencias del paciente.
+9. Prevenir accesos no autorizados y proteger el funcionamiento de las cuentas.
+10. Registrar las autorizaciones otorgadas por los usuarios y mantener evidencia de su aceptación.
+11. Atender consultas, solicitudes y reclamos relacionados con el tratamiento de datos personales.
+12. Cumplir obligaciones legales y requerimientos de autoridades competentes.
+
+La información recolectada durante el registro no será utilizada para publicidad comercial no autorizada ni para vender bases de datos personales.
+
+Cualquier finalidad adicional que requiera autorización será comunicada previamente al titular.
+
+6. Autorización para el tratamiento de datos personales
+
+Durante la creación de una cuenta, Mental Pieces pondrá a disposición del usuario la presente Política de Tratamiento de Datos Personales.
+
+Para completar el registro, cuando corresponda solicitar autorización, el usuario deberá manifestar su aceptación de manera previa, expresa e informada mediante una casilla de verificación.
+
+Esta casilla no estará seleccionada de forma predeterminada.
+
+La plataforma conservará evidencia verificable de la autorización otorgada, incluyendo la versión de la política aceptada y la fecha de registro de la aceptación.
+
+Si el usuario no otorga la autorización necesaria para crear y administrar su cuenta, no podrá completar el registro mediante ese procedimiento.
+
+La autorización no implica una aceptación general para cualquier tratamiento futuro ni sustituye los consentimientos especiales que puedan requerirse.
+
+7. Tratamiento de información sensible
+
+La Ley 1581 de 2012 establece una protección especial para los datos sensibles, entre los que se encuentra la información relacionada con la salud.
+
+Mental Pieces es una plataforma vinculada a procesos de atención psicológica, por lo cual determinados datos asociados al uso del servicio podrían revelar información sensible sobre sus usuarios.
+
+El tratamiento de esta información se realizará únicamente bajo las condiciones permitidas por la legislación colombiana.
+
+Cuando se requieran datos sensibles de salud para la atención psicológica, se informará al titular sobre su naturaleza, las finalidades del tratamiento y el carácter facultativo de responder preguntas sobre datos sensibles, salvo las excepciones legales aplicables.
+
+Cuando sea exigible, se solicitará una autorización explícita y diferenciada.
+
+La aceptación de esta política durante el registro no sustituye el consentimiento informado que corresponda a la prestación de servicios psicológicos ni autoriza por sí sola cualquier utilización de notas clínicas o información terapéutica.
+
+8. Tratamiento de datos de menores de edad
+
+El tratamiento de información personal de niños, niñas y adolescentes deberá respetar sus derechos fundamentales, su interés superior y las disposiciones legales correspondientes.
+
+Cuando sea aplicable, se requerirá la intervención y autorización del representante legal y se garantizará el derecho del menor a ser escuchado en los términos establecidos por la normativa.
+
+La plataforma podrá permitir el registro de información básica según sus reglas de funcionamiento; sin embargo, actualmente el agendamiento de citas en línea está destinado a personas mayores de 18 años.
+
+Los usuarios menores de edad deberán comunicarse con el consultorio para conocer el procedimiento de atención correspondiente.
+
+9. Derechos de los titulares
+
+De acuerdo con la legislación colombiana, los titulares de los datos personales podrán:
+• Conocer, actualizar y rectificar su información personal.
+• Solicitar información sobre el tratamiento realizado.
+• Solicitar prueba de la autorización otorgada cuando sea legalmente exigible.
+• Acceder gratuitamente a sus datos personales en los términos de la ley.
+• Presentar consultas y reclamos ante el responsable del tratamiento.
+• Solicitar la revocatoria de la autorización o la supresión de información cuando legalmente proceda.
+• Presentar quejas ante la Superintendencia de Industria y Comercio, una vez agotado el procedimiento correspondiente ante el responsable o encargado.
+
+El ejercicio de estos derechos se encuentra sujeto a las condiciones y excepciones previstas por la normativa aplicable.
+
+10. Procedimiento para solicitudes y reclamos
+
+El titular podrá presentar consultas, solicitudes de actualización, rectificación, revocatoria o supresión de datos mediante el siguiente canal:
+
+Correo electrónico: paulasarmientopsicologia@gmail.com
+Responsable de atención: Paula Sarmiento
+
+Para atender la solicitud, se podrá requerir la información necesaria para verificar la identidad del solicitante y determinar su legitimación.
+
+Las consultas serán atendidas dentro de un plazo máximo de diez (10) días hábiles desde su recepción, con posibilidad de ampliación hasta por cinco (5) días hábiles adicionales en los casos legalmente previstos.
+
+Los reclamos se resolverán dentro de un plazo máximo de quince (15) días hábiles, contados conforme al procedimiento legal, con posibilidad de ampliación de hasta ocho (8) días hábiles adicionales cuando corresponda.
+
+Los requerimientos de información adicional y las solicitudes incompletas serán gestionados según las disposiciones de la Ley 1581 de 2012.
+
+11. Seguridad y confidencialidad
+
+Mental Pieces aplica mecanismos técnicos de seguridad para controlar el acceso a las cuentas y proteger la información administrada mediante la plataforma.
+
+Estos mecanismos incluyen autenticación de usuarios, almacenamiento de contraseñas mediante funciones de hash, validación de entradas y controles de autorización según el rol del usuario.
+
+La información personal solamente deberá estar disponible para quienes cuenten con autorización legítima para acceder a ella.
+
+Los registros clínicos, cuando existan, estarán sujetos a medidas adicionales de confidencialidad y a las obligaciones legales y profesionales correspondientes.
+
+El responsable revisará los riesgos de seguridad e implementará medidas razonables y proporcionales a la información tratada.
+
+12. Proveedores tecnológicos
+
+Para operar la plataforma se utilizan servicios tecnológicos que permiten alojar la aplicación y conservar información en bases de datos.
+
+Entre los proveedores asociados al funcionamiento técnico de Mental Pieces se encuentran:
+• Hostinger: alojamiento de la aplicación web, servicios del backend y funcionalidades de correo electrónico.
+• Supabase: infraestructura administrada para la base de datos PostgreSQL.
+
+El tratamiento efectuado mediante estos proveedores estará sujeto a las condiciones contractuales, de seguridad y protección de datos aplicables.
+
+Cuando la información sea tratada fuera de Colombia o intervengan terceros encargados, el responsable deberá verificar el cumplimiento de las disposiciones correspondientes sobre transmisión y transferencia internacional de datos personales.
+
+No se autoriza a estos proveedores a utilizar la información para finalidades incompatibles con las obligaciones y acuerdos aplicables.
+
+13. Almacenamiento técnico en el navegador
+
+Mental Pieces utiliza mecanismos técnicos de almacenamiento necesarios para determinadas funciones de la plataforma.
+
+Entre ellos se encuentra el almacenamiento temporal de sesión del navegador, que permite conservar la información de autenticación durante el uso de la aplicación.
+
+La plataforma también puede utilizar recursos de caché y almacenamiento técnico asociados a su funcionamiento como aplicación web progresiva.
+
+La eliminación de estos datos desde la configuración del navegador puede provocar el cierre de sesión o afectar temporalmente algunas funcionalidades.
+
+El uso de tecnologías adicionales de analítica o seguimiento que impliquen tratamiento de datos personales será informado y gestionado según las autorizaciones legalmente requeridas.
+
+14. Conservación de datos personales
+
+Los datos personales serán conservados durante el tiempo necesario para cumplir las finalidades del tratamiento, atender las solicitudes de los usuarios y satisfacer las obligaciones legales, contractuales o documentales que correspondan.
+
+La vigencia de las bases de datos estará asociada a la duración de las finalidades legítimas que justifican su conservación y a los periodos legales aplicables.
+
+La cancelación de una cuenta no implica necesariamente la eliminación inmediata de toda la información, especialmente cuando exista una obligación legal de conservación.
+
+Una vez cumplidas las finalidades y agotados los periodos correspondientes, se aplicarán las medidas de eliminación, anonimización o disposición de datos que resulten legalmente procedentes.
+
+15. Cambios en la política
+
+Mental Pieces podrá actualizar la presente política cuando existan modificaciones en las funcionalidades de la plataforma, las finalidades del tratamiento, las condiciones de operación o la normativa aplicable.
+
+Los cambios sustanciales serán informados oportunamente a los titulares y, cuando se requiera, se solicitará una nueva autorización.
+
+La versión vigente estará disponible para consulta en:
+https://mentalpieces.site/politica-de-tratamiento-de-datos
+
+16. Vigencia
+
+La presente Política de Tratamiento de Datos Personales entrará en vigencia a partir del 30/10/2026 y permanecerá aplicable mientras se desarrollen las finalidades informadas y subsistan las obligaciones legales de conservación correspondientes.
+
+Responsable legal: MENTAL PIECES BY PAULA SARMIENTO S A S (NIT 901911280)
+Canal de atención de datos personales: paulasarmientopsicologia@gmail.com
+Última actualización: 30/10/2026

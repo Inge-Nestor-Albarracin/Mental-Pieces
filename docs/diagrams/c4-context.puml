@@ -1,0 +1,30 @@
+@startuml c4-context
+' Mental Pieces — Modelo C4, nivel 1: diagrama de contexto del sistema (2026-10-29)
+!include <C4/C4_Context>
+
+skinparam defaultFontName "Segoe UI"
+LAYOUT_TOP_DOWN()
+HIDE_STEREOTYPE()
+
+title Mental Pieces — C4 Nivel 1: contexto del sistema
+
+Person(patient, "Paciente", "Se registra, autoriza el tratamiento de datos, completa su perfil y agenda, reprograma o cancela sus citas.")
+Person(psychologist, "Psicólogo(a)", "Publica su disponibilidad, gestiona su agenda, registra notas clínicas y revisa alertas de seguimiento.")
+Person(admin, "Administrador(a)", "Crea y administra cuentas internas, asigna pacientes a psicólogos y consulta alertas.")
+
+System(mp, "Mental Pieces", "Aplicación web progresiva (PWA) para la gestión de citas y del seguimiento psicológico.")
+
+System_Ext(smtp, "Servidor de correo Hostinger", "SMTP con TLS. Entrega confirmaciones, reprogramaciones, cancelaciones y recordatorios.")
+System_Ext(supabase, "Supabase", "Servicio administrado de PostgreSQL donde se almacenan los datos del sistema.")
+System_Ext(github, "GitHub", "Repositorio del código fuente; dispara el despliegue automático en Hostinger.")
+
+Rel(patient, mp, "Usa", "HTTPS")
+Rel(psychologist, mp, "Usa", "HTTPS")
+Rel(admin, mp, "Usa", "HTTPS")
+Rel(mp, supabase, "Lee y escribe datos", "PostgreSQL sobre TLS")
+Rel(mp, smtp, "Envía correos de citas", "SMTPS 465")
+Rel_U(smtp, patient, "Entrega correos")
+Rel_U(smtp, psychologist, "Entrega correos")
+Rel_U(github, mp, "Despliega versiones", "rama main")
+
+@enduml

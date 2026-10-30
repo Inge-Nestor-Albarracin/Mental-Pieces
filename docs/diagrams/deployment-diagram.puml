@@ -1,0 +1,71 @@
+@startuml mental-pieces-despliegue
+' Mental Pieces — Diagrama de despliegue UML (2026-10-29)
+' Basado en el despliegue real: Hostinger Business (web y API en Node.js, tarea cron),
+' Supabase (PostgreSQL) y el servidor SMTP de Hostinger.
+
+top to bottom direction
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam nodesep 40
+skinparam ranksep 55
+skinparam ArrowColor #4A5A50
+skinparam ArrowThickness 1.3
+skinparam node {
+  BackgroundColor #F5F2EC
+  BorderColor #365B45
+  BorderThickness 1.6
+}
+skinparam artifact {
+  BackgroundColor #FFFDF9
+  BorderColor #365B45
+}
+skinparam database {
+  BackgroundColor #E8F0F8
+  BorderColor #3E6A8A
+}
+skinparam component {
+  BackgroundColor #FFFDF9
+  BorderColor #365B45
+}
+
+title Mental Pieces — Diagrama de despliegue
+
+node "Dispositivo del usuario\n<<device>>\ncomputador · tableta · teléfono" as device {
+  node "Navegador web\n<<execution environment>>\nChrome · Edge · Firefox · Safari" as browser {
+    artifact "Aplicación web / PWA\nHTML · CSS · JavaScript\nservice worker (sw.js)" as pwa
+    database "sessionStorage\naccessToken (JWT)" as storage
+  }
+}
+
+node "GitHub\n<<repositorio>>\nMental-Pieces (rama main)" as github
+
+node "Hostinger Business\n<<servidor de hosting>>" as hostinger {
+  node "Node.js 22\n<<execution environment>>\nmentalpieces.site" as webnode {
+    artifact "apps/web\nNext.js 16 · React 19\n(next start)" as webapp
+  }
+  node "Node.js 22\n<<execution environment>>\napi.mentalpieces.site" as apinode {
+    artifact "apps/api\nNestJS 11 · Prisma 7\n(dist/src/main.js)" as api
+    artifact "CLI de notificaciones\n(dist/src/cli/notifications.js)" as cli
+  }
+  component "Tarea cron\n(cada 5 minutos)" as cron
+  node "Servidor de correo\n<<SMTP>>\nsmtp.hostinger.com:465" as smtp
+}
+
+node "Supabase\n<<servicio en la nube>>" as supabase {
+  database "PostgreSQL\nesquema public\n(RLS activo · sin acceso de la Data API)" as db
+}
+
+node "Buzón del destinatario\n<<servidor de correo externo>>\npacientes y psicólogos" as inbox
+
+device -down-> webnode : HTTPS (TLS, 443)\npáginas y recursos
+pwa -down-> api : HTTPS (TLS, 443)\nAPI REST · JSON\nAuthorization: Bearer JWT
+pwa .left.> storage : guarda / lee el token
+github -down-> hostinger : despliegue automático\n(build con pnpm)
+api -down-> db : TCP + TLS\nPrisma (adapter pg)\nDATABASE_URL
+cron -right-> cli : ejecuta
+cli -down-> db : TCP + TLS\ncola de notificaciones
+cli -down-> smtp : SMTPS (TLS, 465)
+smtp -down-> inbox : SMTP\nconfirmaciones, cambios,\ncancelaciones y recordatorios
+
+@enduml
