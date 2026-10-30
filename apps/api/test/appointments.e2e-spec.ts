@@ -40,6 +40,19 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
     updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
   };
+  // Booking requirements read inside the transaction (profile, data policy, age).
+  const completeProfile = {
+    fullName: 'Paciente Sintético',
+    birthDate: new Date('1990-05-01T00:00:00.000Z'),
+    gender: 'PREFER_NOT_TO_SAY',
+    genderOther: null,
+    phone: '300 000 0000',
+  };
+  const eligibility = {
+    patient: { findUnique: jest.fn() },
+    legalDocument: { findFirst: jest.fn() },
+    dataProcessingConsent: { findFirst: jest.fn() },
+  };
   const database = {
     appointment,
     notification,
@@ -67,6 +80,7 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
         operation({
           appointment,
           notification,
+          ...eligibility,
         } as unknown as Prisma.TransactionClient),
     ),
   };
@@ -116,6 +130,11 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
     });
     availability = { WEDNESDAY: [[360, 1080]], THURSDAY: [[360, 1080]] };
     database.patient.findUnique.mockResolvedValue({ id: patientId });
+    eligibility.patient.findUnique.mockResolvedValue(completeProfile);
+    eligibility.legalDocument.findFirst.mockResolvedValue({
+      publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    eligibility.dataProcessingConsent.findFirst.mockResolvedValue({ id: 'c1' });
     // Appointment.psychologistId is a User id; a StaffProfile id is not a user.
     database.user.findUnique.mockImplementation(({ where, select }) =>
       Promise.resolve(
@@ -170,6 +189,34 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
       .query({ psychologistId: psychologistUserId, date })
       .set('Authorization', patient());
   }
+
+  describe('booking requirements (checked in the booking transaction)', () => {
+    it('refuses an incomplete profile with 409 and creates nothing', async () => {
+      eligibility.patient.findUnique.mockResolvedValue({ ...completeProfile, fullName: '   ' });
+      const response = await book('2026-10-15', '10:00').expect(409);
+      expect(response.body.message).toBe('Debes completar tu perfil antes de agendar una cita.');
+      expect(appointment.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a patient without the accepted data policy', async () => {
+      eligibility.dataProcessingConsent.findFirst.mockResolvedValue(null);
+      const response = await book('2026-10-15', '10:00').expect(409);
+      expect(response.body.message).toMatch(/Política de Tratamiento de Datos/);
+      expect(appointment.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses minors (no representation procedure yet)', async () => {
+      eligibility.patient.findUnique.mockResolvedValue({ ...completeProfile, birthDate: new Date('2015-01-01T00:00:00.000Z') });
+      const response = await book('2026-10-15', '10:00').expect(409);
+      expect(response.body.message).toMatch(/menores de 18/);
+      expect(appointment.create).not.toHaveBeenCalled();
+    });
+
+    it('a complete profile with the accepted policy books normally', async () => {
+      await book('2026-10-15', '10:00').expect(201);
+      expect(appointment.create).toHaveBeenCalledTimes(1);
+    });
+  });
 
   describe('creation', () => {
     it.each([

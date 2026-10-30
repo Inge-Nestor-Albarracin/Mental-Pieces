@@ -5,7 +5,11 @@ import {
   MinLength,
 } from 'class-validator';
 
-export class CreatePatientUserDto {
+import { AcceptDataPolicyDto } from '../../legal/dto/accept-data-policy.dto';
+
+// Stage 1 of the patient sign-up: account credentials plus the explicit acceptance
+// of the published data-processing policy. Personal data comes later (profile).
+export class CreatePatientUserDto extends AcceptDataPolicyDto {
   @IsEmail({}, { message: 'El correo electrónico no es válido.' })
   email!: string;
 

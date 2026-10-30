@@ -3,8 +3,9 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { hash } from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 
-import { UserRole } from '../../../generated/prisma/client';
+import { ConsentSource, UserRole } from '../../../generated/prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { DATA_POLICY_PURPOSE, policyToAccept } from '../legal/data-policy';
 import { CreatePatientUserDto } from './dto/create-patient-user.dto';
 
 @Injectable()
@@ -46,35 +47,55 @@ export class UsersService {
       );
     }
 
+    // Fail fast (before the costly hash) when the policy is not published or
+    // the accepted version is not the current one.
+    await policyToAccept(this.prisma, dto.dataPolicyVersion);
+
     const passwordHash = await hash(dto.password, 12);
     const mrn = this.generateMrn();
 
-    return this.prisma.user
-      .create({
-        data: {
-          email: normalizedEmail,
-          passwordHash,
-          role: UserRole.PATIENT,
+    // User, empty patient profile and acceptance evidence in one transaction:
+    // either all three exist or none does. The policy version is re-checked
+    // inside it, and the acceptance time is set by the database.
+    return this.prisma
+      .$transaction(async (tx) => {
+        const policy = await policyToAccept(tx, dto.dataPolicyVersion);
+        return tx.user.create({
+          data: {
+            email: normalizedEmail,
+            passwordHash,
+            role: UserRole.PATIENT,
 
-          patientProfile: {
-            create: {
-              mrn,
+            patientProfile: {
+              create: {
+                mrn,
+              },
+            },
+
+            dataConsents: {
+              create: {
+                documentId: policy.id,
+                purpose: DATA_POLICY_PURPOSE,
+                source: ConsentSource.PATIENT_REGISTRATION,
+                documentVersion: policy.version,
+                documentSha256: policy.sha256,
+              },
             },
           },
-        },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          isActive: true,
-          createdAt: true,
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            isActive: true,
+            createdAt: true,
 
-          patientProfile: {
-            select: {
-              mrn: true,
+            patientProfile: {
+              select: {
+                mrn: true,
+              },
             },
           },
-        },
+        });
       })
       .catch((error: unknown) => {
         // Two concurrent sign-ups with the same email: 409, never a 500.

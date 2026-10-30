@@ -25,6 +25,7 @@ import {
   isCalendarDate,
   weekDayOf,
 } from './appointment-time';
+import { assertPatientCanBook } from '../patients/patient-requirements';
 import {
   enqueueAppointmentBooked,
   enqueueAppointmentCancelled,
@@ -106,6 +107,10 @@ export class AppointmentsService {
     }
 
     return this.runBookingTransaction(async (tx) => {
+      // Complete profile, accepted data policy and adult age, read from PostgreSQL
+      // in the same serializable transaction as the booking (never from the client).
+      await assertPatientCanBook(tx, patientUserId);
+
       const upcoming = await tx.appointment.count({
         where: {
           patientId: patient.id,

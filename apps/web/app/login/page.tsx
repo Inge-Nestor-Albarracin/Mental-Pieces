@@ -7,8 +7,9 @@ import {
   useState,
 } from 'react';
 
-import { login } from '../../lib/api';
+import { getMyProfile, login } from '../../lib/api';
 import { homeForRole } from '../../components/role-gate';
+import { patientLanding } from '../../lib/onboarding';
 import Image from 'next/image';
 import { InstallAppButton } from '../../components/pwa';
 
@@ -44,9 +45,20 @@ export default function LoginPage() {
         result.accessToken,
       );
 
-      router.replace(
-        homeForRole(result.user.role),
-      );
+      // Patients go straight to the pending step (data policy, then profile);
+      // the patient pages re-check it on every load, so this is only a shortcut.
+      // If the profile cannot be read now, the patient gate decides on /dashboard.
+      const profile =
+        result.user.role === 'PATIENT'
+          ? await getMyProfile(
+              result.accessToken,
+            ).catch(() => null)
+          : null;
+      const destination = profile
+        ? patientLanding(profile)
+        : homeForRole(result.user.role);
+
+      router.replace(destination);
     } catch (error) {
       if (error instanceof Error) {
         setError(error.message);

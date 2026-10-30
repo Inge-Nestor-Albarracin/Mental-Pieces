@@ -23,6 +23,21 @@ enum Gender {
   OTHER
 }
 
+enum LegalDocumentKind {
+  DATA_PROCESSING_POLICY
+}
+
+// What the person authorised. Account management only: consent for health data
+// and informed consent for care are separate, clinical flows.
+enum ConsentPurpose {
+  ACCOUNT_DATA_PROCESSING
+}
+
+enum ConsentSource {
+  PATIENT_REGISTRATION
+  EXISTING_ACCOUNT
+}
+
 enum WeekDay {
   MONDAY
   TUESDAY
@@ -55,10 +70,11 @@ model User {
   psychologistAvailabilities PsychologistAvailability[]
   psychologistAppointments   Appointment[]              @relation("PsychologistAppointments")
 
-  careRelationships CareRelationship[]    @relation("CarePsychologist")
-  clinicalNotes     ClinicalSessionNote[] @relation("NoteAuthor")
+  careRelationships CareRelationship[]      @relation("CarePsychologist")
+  clinicalNotes     ClinicalSessionNote[]   @relation("NoteAuthor")
   auditLogs         AuditLog[]
   notifications     Notification[]
+  dataConsents      DataProcessingConsent[]
 }
 
 model Patient {
@@ -247,4 +263,45 @@ model Notification {
   @@index([status, scheduledFor])
   @@index([appointmentId, status])
   @@index([recipientUserId, acceptedAt])
+}
+
+// Published legal text, one row per version, never edited after publication
+// (database trigger). Published with the private CLI after legal review.
+model LegalDocument {
+  id                   String            @id @default(cuid())
+  kind                 LegalDocumentKind
+  version              String
+  title                String
+  body                 String
+  // Hex SHA-256 of the UTF-8 body: identifies exactly the text that was accepted.
+  sha256               String
+  // false for editorial changes that do not need a new authorisation.
+  requiresReacceptance Boolean           @default(true)
+  publishedAt          DateTime          @default(now())
+  createdAt            DateTime          @default(now())
+
+  consents DataProcessingConsent[]
+
+  @@unique([kind, version])
+  @@index([kind, publishedAt])
+}
+
+// Evidence that a user accepted a published policy. Append-only (database
+// trigger); the time is set by the server. No passwords, tokens or clinical data.
+model DataProcessingConsent {
+  id              String         @id @default(cuid())
+  userId          String
+  documentId      String
+  purpose         ConsentPurpose
+  source          ConsentSource
+  // Copies of the accepted version, kept with the evidence.
+  documentVersion String
+  documentSha256  String
+  acceptedAt      DateTime       @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  document LegalDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, documentId, purpose])
+  @@index([userId, acceptedAt])
 }

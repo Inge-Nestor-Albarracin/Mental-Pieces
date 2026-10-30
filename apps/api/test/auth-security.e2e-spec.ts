@@ -47,6 +47,15 @@ describe('Authentication hardening (no real database)', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   let secret: string;
+  // A published (synthetic) policy so sign-ups can accept it.
+  const policy = {
+    id: 'policy-1',
+    version: '2026-test',
+    title: 'Política sintética',
+    body: 'Texto sintético.',
+    sha256: 'a'.repeat(64),
+    publishedAt: new Date('2026-01-01T00:00:00.000Z'),
+  };
   const database = {
     user: {
       findUnique: jest.fn((args: { where: { email: string } }) =>
@@ -54,6 +63,10 @@ describe('Authentication hardening (no real database)', () => {
       ),
       create: jest.fn(),
     },
+    legalDocument: { findFirst: jest.fn(() => Promise.resolve(policy)) },
+    $transaction: jest.fn((operation: (client: unknown) => Promise<unknown>) =>
+      operation(database),
+    ),
   };
 
   async function boot() {
@@ -165,12 +178,22 @@ describe('Authentication hardening (no real database)', () => {
     for (let i = 0; i < RATE_LIMITS.register.limit; i++) {
       await request(app.getHttpServer())
         .post('/users')
-        .send({ email: `nuevo${i}@example.invalid`, password: PASSWORD })
+        .send({
+          email: `nuevo${i}@example.invalid`,
+          password: PASSWORD,
+          acceptDataPolicy: true,
+          dataPolicyVersion: policy.version,
+        })
         .expect(201);
     }
     await request(app.getHttpServer())
       .post('/users')
-      .send({ email: 'otro@example.invalid', password: PASSWORD })
+      .send({
+        email: 'otro@example.invalid',
+        password: PASSWORD,
+        acceptDataPolicy: true,
+        dataPolicyVersion: policy.version,
+      })
       .expect(429);
   });
 

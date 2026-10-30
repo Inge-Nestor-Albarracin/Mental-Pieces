@@ -151,7 +151,36 @@ export interface PatientProfile {
   genderOther: string | null;
   phone: string | null;
   isProfileComplete: boolean;
+  // Computed by the server: accepted the data policy version currently required.
+  dataPolicyAccepted: boolean;
+  currentDataPolicyVersion: string | null;
   emailRemindersEnabled: boolean;
+}
+
+export interface DataPolicy {
+  version: string;
+  title: string;
+  body: string;
+  sha256: string;
+  publishedAt: string;
+}
+
+// Public: the published Data-Processing Policy. null when none is published yet.
+export async function getDataPolicy(): Promise<DataPolicy | null> {
+  const response = await fetch(`${API_URL}/legal/data-processing-policy`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new ApiError(response.status, 'No fue posible cargar la Política de Tratamiento de Datos Personales.');
+  }
+  return response.json();
+}
+
+// Existing accounts accept the current version; the server records version and time.
+export function acceptDataPolicy(token: string, dataPolicyVersion: string): Promise<{ dataPolicyAccepted: boolean }> {
+  return authenticatedRequest(token, '/patients/me/data-policy-acceptance', 'No fue posible registrar tu autorización.', {
+    method: 'POST',
+    body: JSON.stringify({ acceptDataPolicy: true, dataPolicyVersion }),
+  });
 }
 
 export function getMyProfile(token: string): Promise<PatientProfile> {
@@ -161,6 +190,7 @@ export function getMyProfile(token: string): Promise<PatientProfile> {
 export async function registerPatient(
   email: string,
   password: string,
+  acceptance: { acceptDataPolicy: boolean; dataPolicyVersion: string },
 ) {
   const response = await fetch(`${API_URL}/users`, {
     method: 'POST',
@@ -170,15 +200,15 @@ export async function registerPatient(
     body: JSON.stringify({
       email,
       password,
+      acceptDataPolicy: acceptance.acceptDataPolicy,
+      dataPolicyVersion: acceptance.dataPolicyVersion,
     }),
   });
 
   if (!response.ok) {
+    const message: unknown = await parseErrorMessage(response, 'No fue posible crear la cuenta.');
     throw new Error(
-      await parseErrorMessage(
-        response,
-        'No fue posible crear la cuenta.',
-      ),
+      Array.isArray(message) ? message.join(' ') : typeof message === 'string' ? message : 'No fue posible crear la cuenta.',
     );
   }
 

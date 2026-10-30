@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { ApiError, getCurrentUser, type UserRole } from '../lib/api';
+import { usePathname, useRouter } from 'next/navigation';
+import { ApiError, getCurrentUser, getMyProfile, type UserRole } from '../lib/api';
+import { patientRedirect } from '../lib/onboarding';
 import { ApiErrorNotice } from './api-error-notice';
 
 export function homeForRole(role: UserRole): string {
@@ -12,8 +13,11 @@ export function homeForRole(role: UserRole): string {
 }
 
 // Navigation/UX only. Each backend endpoint still enforces role and ownership.
+// Patients are also routed through the data-policy acceptance and the profile
+// before any patient page renders (nothing is shown while that is checked).
 export function RoleGate({ role, children }: { role: UserRole; children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [allowed, setAllowed] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -27,6 +31,15 @@ export function RoleGate({ role, children }: { role: UserRole; children: ReactNo
         const user = await getCurrentUser(token);
         if (!active) return;
         if (user.role === role) {
+          if (role === 'PATIENT') {
+            const profile = await getMyProfile(token);
+            if (!active) return;
+            const target = patientRedirect(pathname, profile);
+            if (target) {
+              router.replace(target);
+              return;
+            }
+          }
           setAllowed(true);
         } else if (user.role !== 'STAFF') {
           router.replace(homeForRole(user.role));
@@ -39,7 +52,7 @@ export function RoleGate({ role, children }: { role: UserRole; children: ReactNo
     }
     void checkRole();
     return () => { active = false; };
-  }, [role, router, attempt]);
+  }, [role, router, attempt, pathname]);
 
   if (allowed) return children;
 

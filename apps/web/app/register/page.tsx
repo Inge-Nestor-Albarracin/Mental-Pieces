@@ -3,10 +3,14 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { registerPatient } from '../../lib/api';
+import { getDataPolicy, registerPatient, type DataPolicy } from '../../lib/api';
+import { DATA_POLICY_PATH } from '../../lib/onboarding';
+
+const ACCEPTANCE_REQUIRED =
+  'Para crear tu cuenta debes leer y aceptar la Política de Tratamiento de Datos Personales.';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,6 +27,28 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] =
     useState(false);
 
+  // Unchecked until the person ticks it. The version shown is the one sent and
+  // re-checked by the server.
+  const [acceptDataPolicy, setAcceptDataPolicy] =
+    useState(false);
+  const [policy, setPolicy] = useState<
+    DataPolicy | null | undefined
+  >(undefined);
+
+  useEffect(() => {
+    let active = true;
+    getDataPolicy()
+      .then((loaded) => {
+        if (active) setPolicy(loaded);
+      })
+      .catch(() => {
+        if (active) setPolicy(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -37,12 +63,28 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!acceptDataPolicy) {
+      setError(ACCEPTANCE_REQUIRED);
+      return;
+    }
+
+    if (!policy) {
+      setError(
+        'La Política de Tratamiento de Datos Personales no está disponible en este momento, por lo que no es posible crear cuentas. Intenta más tarde.',
+      );
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       await registerPatient(
         email,
         password,
+        {
+          acceptDataPolicy,
+          dataPolicyVersion: policy.version,
+        },
       );
 
       router.push('/login');
@@ -254,6 +296,60 @@ export default function RegisterPage() {
               />
             </div>
 
+            <div className="rounded-xl border border-[#D8D0C7] bg-white px-4 py-3.5">
+              <p
+                id="dataPolicyTitle"
+                className="text-sm font-semibold text-[#2C2420]"
+              >
+                Autorización de tratamiento de datos personales
+              </p>
+
+              <div className="mt-2 flex items-start gap-3">
+                <input
+                  id="acceptDataPolicy"
+                  type="checkbox"
+                  checked={acceptDataPolicy}
+                  onChange={(event) =>
+                    setAcceptDataPolicy(
+                      event.target.checked,
+                    )
+                  }
+                  aria-describedby="dataPolicyTitle"
+                  aria-invalid={
+                    error === ACCEPTANCE_REQUIRED
+                  }
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[#6B8F71]"
+                />
+
+                <label
+                  htmlFor="acceptDataPolicy"
+                  className="text-xs leading-relaxed text-[#5F544D]"
+                >
+                  He leído la{' '}
+                  <a
+                    href={DATA_POLICY_PATH}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-[#587A5E] underline underline-offset-2"
+                  >
+                    Política de Tratamiento de Datos Personales
+                  </a>{' '}
+                  de Mental Pieces y autorizo el tratamiento de mis datos
+                  para crear y administrar mi cuenta, gestionar mi perfil y
+                  permitir el uso de las funcionalidades solicitadas,
+                  conforme a las finalidades informadas.
+                </label>
+              </div>
+
+              <p className="mt-2 text-[11px] leading-relaxed text-[#8A7E75]">
+                {policy === undefined
+                  ? 'Cargando la versión vigente de la política...'
+                  : policy
+                    ? `Versión ${policy.version}. Se abre en una pestaña nueva; tus datos del formulario se conservan.`
+                    : 'La política aún no está publicada: por ahora no es posible crear cuentas.'}
+              </p>
+            </div>
+
             {error && (
               <div
                 role="alert"
@@ -265,7 +361,7 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || policy === undefined}
               className="mt-1 flex w-full items-center justify-center rounded-xl bg-[#6B8F71] px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition duration-200 hover:bg-[#587A5E] hover:shadow-md disabled:cursor-not-allowed disabled:bg-[#AAB8AC] disabled:shadow-none"
             >
               {isLoading

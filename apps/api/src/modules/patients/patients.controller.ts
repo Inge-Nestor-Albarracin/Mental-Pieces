@@ -1,10 +1,19 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 
 import { UserRole } from '../../../generated/prisma/client';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { AcceptDataPolicyDto } from '../legal/dto/accept-data-policy.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 import { PatientsService } from './patients.service';
@@ -26,6 +35,19 @@ export class PatientsController {
     @Body() dto: UpdateMyProfileDto,
   ) {
     return this.patientsService.updateMyProfile(request.user.sub, dto);
+  }
+
+  // Existing accounts accept the current data policy explicitly (registration
+  // records it at sign-up). Identity comes from the JWT, the time from the server.
+  @Post('me/data-policy-acceptance')
+  acceptDataPolicy(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: AcceptDataPolicyDto,
+  ) {
+    return this.patientsService.acceptDataPolicy(
+      request.user.sub,
+      dto.dataPolicyVersion,
+    );
   }
 
   // Optional 24 h email reminders. Confirmations, changes and cancellations are

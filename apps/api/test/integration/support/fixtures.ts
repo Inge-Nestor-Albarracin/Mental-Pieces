@@ -1,9 +1,17 @@
 // Synthetic fixtures for the disposable integration database. No real people or notes.
 import { randomBytes } from 'node:crypto';
 import type { JwtService } from '@nestjs/jwt';
-import { UserRole, WeekDay } from '../../../generated/prisma/enums';
+import {
+  ConsentPurpose,
+  ConsentSource,
+  Gender,
+  LegalDocumentKind,
+  UserRole,
+  WeekDay,
+} from '../../../generated/prisma/enums';
 import { PrismaService } from '../../../src/database/prisma.service';
 import { businessNow } from '../../../src/modules/appointments/appointment-time';
+import { policySha256 } from '../../../src/modules/legal/data-policy';
 
 const ALL_DAYS = Object.values(WeekDay);
 // Not a bcrypt hash: these accounts never log in with a password.
@@ -31,15 +39,67 @@ export class Fixtures {
   readonly tag = `it${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
   private counter = 0;
   private readonly userIds: string[] = [];
+  private readonly policyIds: string[] = [];
+  private policy?: { id: string; version: string; sha256: string };
 
   constructor(private readonly prisma: PrismaService) {}
+
+  // A synthetic published policy (not a real legal text), one per fixture run.
+  async publishPolicy(
+    version = `${this.tag}-v${this.policyIds.length + 1}`,
+    requiresReacceptance = true,
+  ) {
+    const body = `Política sintética de pruebas ${version}. No es un texto legal.`;
+    const created = await this.prisma.legalDocument.create({
+      data: {
+        kind: LegalDocumentKind.DATA_PROCESSING_POLICY,
+        version,
+        title: 'Política sintética',
+        body,
+        sha256: policySha256(body),
+        requiresReacceptance,
+      },
+      select: { id: true, version: true, sha256: true },
+    });
+    this.policyIds.push(created.id);
+    this.policy = created;
+    return created;
+  }
+
+  async currentPolicy() {
+    return this.policy ?? this.publishPolicy();
+  }
+
+  async consent(userId: string) {
+    const policy = await this.currentPolicy();
+    await this.prisma.dataProcessingConsent.create({
+      data: {
+        userId,
+        documentId: policy.id,
+        purpose: ConsentPurpose.ACCOUNT_DATA_PROCESSING,
+        source: ConsentSource.EXISTING_ACCOUNT,
+        documentVersion: policy.version,
+        documentSha256: policy.sha256,
+      },
+    });
+  }
+
+  // Accounts registered through the API (POST /users) are cleaned up too.
+  track(userId: string) {
+    this.userIds.push(userId);
+  }
 
   private email(kind: string) {
     this.counter += 1;
     return `${this.tag}-${kind}-${this.counter}@example.test`;
   }
 
-  async patient(fullName = 'Paciente Sintético'): Promise<FixtureUser> {
+  // By default a patient who can book: complete synthetic profile and accepted
+  // policy. Onboarding tests ask for incomplete profiles or no consent.
+  async patient(
+    fullName = 'Paciente Sintético',
+    { complete = true, consent = true } = {},
+  ): Promise<FixtureUser> {
     const email = this.email('patient');
     const user = await this.prisma.user.create({
       data: {
@@ -47,12 +107,23 @@ export class Fixtures {
         passwordHash: NO_LOGIN_HASH,
         role: UserRole.PATIENT,
         patientProfile: {
-          create: { mrn: `MP-TEST-${this.tag}-${this.counter}`, fullName },
+          create: {
+            mrn: `MP-TEST-${this.tag}-${this.counter}`,
+            fullName,
+            ...(complete
+              ? {
+                  birthDate: new Date('1990-01-15T00:00:00.000Z'),
+                  gender: Gender.PREFER_NOT_TO_SAY,
+                  phone: '300 000 0000',
+                }
+              : {}),
+          },
         },
       },
       select: { id: true, patientProfile: { select: { id: true } } },
     });
     this.userIds.push(user.id);
+    if (consent) await this.consent(user.id);
     return {
       userId: user.id,
       role: UserRole.PATIENT,
@@ -129,7 +200,7 @@ export class Fixtures {
 
   // Deletes only rows created by this fixture instance (FK order: children first).
   async cleanup() {
-    if (this.userIds.length === 0) return;
+    if (this.userIds.length === 0 && this.policyIds.length === 0) return;
     const users = { in: this.userIds };
     const patients = await this.prisma.patient.findMany({
       where: { userId: users },
@@ -157,9 +228,15 @@ export class Fixtures {
     await this.prisma.psychologistAvailability.deleteMany({
       where: { psychologistId: users },
     });
+    await this.prisma.dataProcessingConsent.deleteMany({
+      where: { userId: users },
+    });
     await this.prisma.patient.deleteMany({ where: { userId: users } });
     await this.prisma.staffProfile.deleteMany({ where: { userId: users } });
     await this.prisma.user.deleteMany({ where: { id: users } });
+    await this.prisma.legalDocument.deleteMany({
+      where: { id: { in: this.policyIds } },
+    });
   }
 }
 
