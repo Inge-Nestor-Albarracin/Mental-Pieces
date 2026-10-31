@@ -141,6 +141,7 @@ export class AppointmentsController {
   @Roles(
     UserRole.PATIENT,
     UserRole.PSYCHOLOGIST,
+    UserRole.STAFF,
   )
   getAvailableSlots(
     @Req()

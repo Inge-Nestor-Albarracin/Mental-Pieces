@@ -8,6 +8,7 @@ import { AppointmentStatus, UserRole } from '../../generated/prisma/enums';
 import { PrismaService } from '../../src/database/prisma.service';
 import { AppointmentLifecycleService } from '../../src/modules/appointments/appointment-lifecycle.service';
 import { AppointmentsService } from '../../src/modules/appointments/appointments.service';
+import { PushDispatcher } from '../../src/modules/push/push-dispatcher';
 import { ClinicalAccessService } from '../../src/modules/clinical/clinical-access.service';
 import { ClinicalService } from '../../src/modules/clinical/clinical.service';
 import { ClinicalTransactionService } from '../../src/modules/clinical/clinical-transaction.service';
@@ -78,7 +79,11 @@ const time = (minute: number) =>
 describe('Booking concurrency against a disposable PostgreSQL (Level I, service + DB)', () => {
   const prisma = new PrismaService();
   const fixtures = new Fixtures(prisma);
-  const appointments = new AppointmentsService(prisma);
+  // Push is disabled (no PUSH_ENABLED): kick() is a no-op.
+  const appointments = new AppointmentsService(
+    prisma,
+    new PushDispatcher(prisma),
+  );
   const lifecycle = new AppointmentLifecycleService(prisma);
   const clinical = new ClinicalService(
     new ClinicalTransactionService(prisma),

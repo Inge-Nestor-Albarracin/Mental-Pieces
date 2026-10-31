@@ -25,12 +25,19 @@ import {
   isCalendarDate,
   weekDayOf,
 } from './appointment-time';
-import { assertPatientCanBook } from '../patients/patient-requirements';
+import {
+  assertPatientCanBook,
+  DATA_POLICY_REQUIRED_MESSAGE,
+  MINOR_BOOKING_MESSAGE,
+  PROFILE_INCOMPLETE_MESSAGE,
+} from '../patients/patient-requirements';
 import {
   enqueueAppointmentBooked,
   enqueueAppointmentCancelled,
   enqueueAppointmentRescheduled,
 } from '../notifications/notification-outbox';
+import { PushDispatcher } from '../push/push-dispatcher';
+import type { StaffCreateAppointmentDto } from './dto/staff-create-appointment.dto';
 
 const APPOINTMENT_DURATION_MINUTES = 60;
 // Anti-abuse: one patient cannot block a psychologist's whole schedule.
@@ -44,9 +51,29 @@ const SLOT_TAKEN_MESSAGE =
 // Attempts for a booking transaction that PostgreSQL aborted as a serialization conflict.
 const BOOKING_ATTEMPTS = 3;
 
+// Same rules, worded for reception staff booking on a patient's behalf.
+const STAFF_REQUIREMENT_MESSAGES: Record<string, string> = {
+  [PROFILE_INCOMPLETE_MESSAGE]:
+    'El paciente debe completar su perfil (nombre, fecha de nacimiento, género y teléfono) antes de agendar.',
+  [DATA_POLICY_REQUIRED_MESSAGE]:
+    'El paciente aún no ha aceptado la Política de Tratamiento de Datos Personales. Debe ingresar a la aplicación y aceptarla antes de agendar.',
+  [MINOR_BOOKING_MESSAGE]:
+    'No es posible agendar en línea citas para menores de 18 años.',
+};
+
+interface BookingRequest {
+  patientId: string;
+  patientUserId: string;
+  // Staff member booking on the patient's behalf; undefined when the patient books.
+  bookedByUserId?: string;
+}
+
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly push: PushDispatcher,
+  ) {}
 
   async create(patientUserId: string, dto: CreateAppointmentDto) {
     const patient = await this.prisma.patient.findUnique({
@@ -61,6 +88,45 @@ export class AppointmentsService {
     if (!patient) {
       throw new NotFoundException('No se encontró el perfil del paciente.');
     }
+
+    return this.book({ patientId: patient.id, patientUserId }, dto);
+  }
+
+  // Reception (STAFF) books for a patient. Same availability, conflict, limit and
+  // profile/consent rules as the patient's own booking, in the same transaction.
+  async createForPatient(staffUserId: string, dto: StaffCreateAppointmentDto) {
+    const staff = await this.prisma.user.findUnique({
+      where: { id: staffUserId },
+      select: { role: true, isActive: true },
+    });
+    if (!staff || staff.role !== UserRole.STAFF || !staff.isActive) {
+      throw new ForbiddenException(
+        'Solo el personal activo puede agendar citas para pacientes.',
+      );
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: dto.patientId },
+      select: { id: true, userId: true, user: { select: { isActive: true } } },
+    });
+    if (!patient || !patient.user.isActive) {
+      throw new NotFoundException('El paciente no existe o no está activo.');
+    }
+
+    return this.book(
+      {
+        patientId: patient.id,
+        patientUserId: patient.userId,
+        bookedByUserId: staffUserId,
+      },
+      dto,
+    );
+  }
+
+  private async book(request: BookingRequest, dto: CreateAppointmentDto) {
+    const { patientUserId, bookedByUserId } = request;
+    const patient = { id: request.patientId };
+    const byStaff = bookedByUserId !== undefined;
 
     const psychologistId = dto.psychologistId.trim();
     const appointmentDate = this.normalizeCalendarDate(dto.appointmentDate);
@@ -106,10 +172,19 @@ export class AppointmentsService {
       );
     }
 
-    return this.runBookingTransaction(async (tx) => {
+    const booked = await this.runBookingTransaction(async (tx) => {
       // Complete profile, accepted data policy and adult age, read from PostgreSQL
       // in the same serializable transaction as the booking (never from the client).
-      await assertPatientCanBook(tx, patientUserId);
+      try {
+        await assertPatientCanBook(tx, patientUserId);
+      } catch (error: unknown) {
+        const staffMessage =
+          byStaff && error instanceof ConflictException
+            ? STAFF_REQUIREMENT_MESSAGES[error.message]
+            : undefined;
+        if (staffMessage) throw new ConflictException(staffMessage);
+        throw error;
+      }
 
       const upcoming = await tx.appointment.count({
         where: {
@@ -121,7 +196,9 @@ export class AppointmentsService {
 
       if (upcoming >= MAX_UPCOMING_APPOINTMENTS_PER_PATIENT) {
         throw new ConflictException(
-          `Ya tienes ${MAX_UPCOMING_APPOINTMENTS_PER_PATIENT} citas programadas. Cancela una o espera a que se realice para agendar otra.`,
+          byStaff
+            ? `El paciente ya tiene ${MAX_UPCOMING_APPOINTMENTS_PER_PATIENT} citas programadas. Debe cancelarse una o esperar a que se realice para agendar otra.`
+            : `Ya tienes ${MAX_UPCOMING_APPOINTMENTS_PER_PATIENT} citas programadas. Cancela una o espera a que se realice para agendar otra.`,
         );
       }
 
@@ -167,7 +244,9 @@ export class AppointmentsService {
 
       if (patientConflict) {
         throw new ConflictException(
-          'Ya tienes otra cita agendada en ese horario.',
+          byStaff
+            ? 'El paciente ya tiene otra cita agendada en ese horario.'
+            : 'Ya tienes otra cita agendada en ese horario.',
         );
       }
 
@@ -179,6 +258,7 @@ export class AppointmentsService {
           startMinute,
           endMinute,
           status: AppointmentStatus.SCHEDULED,
+          bookedByUserId: bookedByUserId ?? null,
         },
         select: {
           id: true,
@@ -193,13 +273,18 @@ export class AppointmentsService {
       });
 
       // Outbox in the same transaction: no notification exists unless the booking commits.
-      await enqueueAppointmentBooked(tx, {
-        appointmentId: created.id,
-        patientUserId,
-        psychologistUserId: created.psychologistId,
-        appointmentDate: created.appointmentDate,
-        startMinute: created.startMinute,
-      });
+      await enqueueAppointmentBooked(
+        tx,
+        {
+          appointmentId: created.id,
+          patientUserId,
+          psychologistUserId: created.psychologistId,
+          appointmentDate: created.appointmentDate,
+          startMinute: created.startMinute,
+        },
+        new Date(),
+        bookedByUserId,
+      );
 
       return {
         id: created.id,
@@ -213,6 +298,9 @@ export class AppointmentsService {
         },
       };
     });
+    // Committed: send the queued pushes now instead of waiting for cron.
+    this.push.kick();
+    return booked;
   }
 
   async getMine(patientUserId: string) {
@@ -370,6 +458,7 @@ export class AppointmentsService {
         }
         throw error;
       });
+    this.push.kick();
 
     return {
       id: updated.id,
@@ -449,7 +538,7 @@ export class AppointmentsService {
       );
     }
 
-    return this.runBookingTransaction(async (tx) => {
+    const rescheduled = await this.runBookingTransaction(async (tx) => {
       const conflict = await tx.appointment.findFirst({
         where: {
           psychologistId: appointment.psychologistId,
@@ -553,6 +642,8 @@ export class AppointmentsService {
       }
       throw error;
     });
+    this.push.kick();
+    return rescheduled;
   }
 
   async getPsychologistAgenda(psychologistUserId: string) {
@@ -639,7 +730,8 @@ export class AppointmentsService {
       !doNotUsePatientIdentity ||
       !(
         doNotUsePatientIdentity.role === UserRole.PATIENT ||
-        doNotUsePatientIdentity.role === UserRole.PSYCHOLOGIST
+        doNotUsePatientIdentity.role === UserRole.PSYCHOLOGIST ||
+        doNotUsePatientIdentity.role === UserRole.STAFF
       )
     ) {
       throw new ForbiddenException(

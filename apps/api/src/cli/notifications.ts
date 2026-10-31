@@ -1,7 +1,7 @@
-// Private command-line entry point for email notifications. Run by Hostinger cron;
+// Private command-line entry point for email and push notifications. Run by Hostinger cron;
 // never exposed over HTTP. Compiled to dist/src/cli/notifications.js.
 //
-//   node dist/src/cli/notifications.js process       send due messages (one bounded run)
+//   node dist/src/cli/notifications.js process       send due emails and pushes (one bounded run each)
 //   node dist/src/cli/notifications.js verify-smtp   check SMTP login, sends nothing
 //   node dist/src/cli/notifications.js send-test --to <address> --confirm [--audience psychologist]
 //                                                    one sample email to NOTIFICATIONS_TEST_RECIPIENT
@@ -15,6 +15,9 @@ import { EmailDeliveryError } from '../modules/notifications/email/email-sender'
 import { renderNotificationEmail } from '../modules/notifications/email/email-templates';
 import { SmtpEmailSender } from '../modules/notifications/email/smtp-email-sender';
 import { NotificationProcessor } from '../modules/notifications/notification-processor';
+import { loadPushConfig } from '../modules/notifications/push/push-config';
+import { PushProcessor } from '../modules/notifications/push/push-processor';
+import { WebPushSender } from '../modules/notifications/push/push-sender';
 import {
   loadNotificationsConfig,
   loadSmtpConfig,
@@ -33,23 +36,39 @@ function argValue(args: string[], name: string): string | undefined {
 
 async function processQueue(): Promise<number> {
   const config = loadNotificationsConfig();
-  if (!config.enabled) {
-    log('disabled (NOTIFICATIONS_ENABLED=false): nothing sent');
+  const push = loadPushConfig();
+  if (!config.enabled && !push.enabled) {
+    log(
+      'disabled (NOTIFICATIONS_ENABLED and PUSH_ENABLED are not true): nothing sent',
+    );
     return 0;
   }
-  const sender = new SmtpEmailSender(loadSmtpConfig());
   const prisma = new PrismaService();
   try {
     await prisma.$connect();
-    const summary = await new NotificationProcessor(
-      prisma,
-      sender,
-      config,
-    ).runOnce();
-    log(`run ${JSON.stringify(summary)}`);
+    if (config.enabled) {
+      const sender = new SmtpEmailSender(loadSmtpConfig());
+      try {
+        const summary = await new NotificationProcessor(
+          prisma,
+          sender,
+          config,
+        ).runOnce();
+        log(`email run ${JSON.stringify(summary)}`);
+      } finally {
+        sender.close();
+      }
+    }
+    if (push.enabled) {
+      const summary = await new PushProcessor(
+        prisma,
+        new WebPushSender(push),
+        push,
+      ).runOnce();
+      log(`push run ${JSON.stringify(summary)}`);
+    }
     return 0;
   } finally {
-    sender.close();
     await prisma.$disconnect();
   }
 }

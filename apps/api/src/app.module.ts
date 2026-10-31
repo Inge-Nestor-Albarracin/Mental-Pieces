@@ -16,6 +16,7 @@ import { StaffModule } from './modules/staff/staff.module';
 import { UsersModule } from './modules/users/users.module';
 import { ClinicalModule } from './modules/clinical/clinical.module';
 import { LegalModule } from './modules/legal/legal.module';
+import { PushModule } from './modules/push/push.module';
 import { RATE_LIMITS } from './security/rate-limits';
 
 @Module({
@@ -40,6 +41,7 @@ import { RATE_LIMITS } from './security/rate-limits';
     AppointmentsModule,
     ClinicalModule,
     LegalModule,
+    PushModule,
   ],
 
   controllers: [AppController],

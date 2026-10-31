@@ -9,7 +9,8 @@ import { ApiErrorNotice } from './api-error-notice';
 export function homeForRole(role: UserRole): string {
   return role === 'PSYCHOLOGIST' ? '/psychologist/dashboard'
     : role === 'ADMIN' ? '/admin/dashboard'
-      : '/dashboard';
+      : role === 'STAFF' ? '/staff/dashboard'
+        : '/dashboard';
 }
 
 // Navigation/UX only. Each backend endpoint still enforces role and ownership.
@@ -41,10 +42,8 @@ export function RoleGate({ role, children }: { role: UserRole; children: ReactNo
             }
           }
           setAllowed(true);
-        } else if (user.role !== 'STAFF') {
-          router.replace(homeForRole(user.role));
         } else {
-          setError(new ApiError(403, 'Sin acceso a este portal.'));
+          router.replace(homeForRole(user.role));
         }
       } catch (caught) {
         if (active) setError(caught instanceof ApiError ? caught : new Error('No fue posible verificar tu sesión. Revisa tu conexión.'));

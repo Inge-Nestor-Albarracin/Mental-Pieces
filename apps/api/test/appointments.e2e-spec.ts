@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../src/modules/auth/auth.guard';
 import { RolesGuard } from '../src/modules/auth/roles.guard';
 import { AppointmentsController } from '../src/modules/appointments/appointments.controller';
 import { AppointmentsService } from '../src/modules/appointments/appointments.service';
+import { PushDispatcher } from '../src/modules/push/push-dispatcher';
 
 // Wednesday 2026-10-14 15:00 in America/Bogota (UTC-5).
 const NOW = new Date('2026-10-14T20:00:00Z');
@@ -81,6 +82,9 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
           appointment,
           notification,
           ...eligibility,
+          // Push outbox: nobody has a subscription in these tests.
+          pushSubscription: { findMany: jest.fn().mockResolvedValue([]) },
+          user: { findMany: jest.fn().mockResolvedValue([]) },
         } as unknown as Prisma.TransactionClient),
     ),
   };
@@ -96,6 +100,7 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
         JwtAuthGuard,
         RolesGuard,
         { provide: PrismaService, useValue: database },
+        { provide: PushDispatcher, useValue: { kick: jest.fn() } },
       ],
     }).compile();
     app = module.createNestApplication();
@@ -192,9 +197,14 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
 
   describe('booking requirements (checked in the booking transaction)', () => {
     it('refuses an incomplete profile with 409 and creates nothing', async () => {
-      eligibility.patient.findUnique.mockResolvedValue({ ...completeProfile, fullName: '   ' });
+      eligibility.patient.findUnique.mockResolvedValue({
+        ...completeProfile,
+        fullName: '   ',
+      });
       const response = await book('2026-10-15', '10:00').expect(409);
-      expect(response.body.message).toBe('Debes completar tu perfil antes de agendar una cita.');
+      expect(response.body.message).toBe(
+        'Debes completar tu perfil antes de agendar una cita.',
+      );
       expect(appointment.create).not.toHaveBeenCalled();
     });
 
@@ -206,7 +216,10 @@ describe('Appointments: business time in America/Bogota (no real database)', () 
     });
 
     it('refuses minors (no representation procedure yet)', async () => {
-      eligibility.patient.findUnique.mockResolvedValue({ ...completeProfile, birthDate: new Date('2015-01-01T00:00:00.000Z') });
+      eligibility.patient.findUnique.mockResolvedValue({
+        ...completeProfile,
+        birthDate: new Date('2015-01-01T00:00:00.000Z'),
+      });
       const response = await book('2026-10-15', '10:00').expect(409);
       expect(response.body.message).toMatch(/menores de 18/);
       expect(appointment.create).not.toHaveBeenCalled();

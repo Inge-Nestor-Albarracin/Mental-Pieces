@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { type ShellRole } from '../lib/navigation';
 import { AppFooter } from './app-footer';
 import { AppHeader } from './app-header';
+import { PushPrompt } from './push-notifications';
 import { Eyebrow, Icon } from './ui';
 
 // Header + content + footer. The footer stays at the bottom on short pages.
@@ -15,6 +16,7 @@ export function AppShell({ role, children, width = 'wide' }: {
     <div className="flex min-h-dvh flex-col bg-background">
       <AppHeader role={role} />
       <main className={`mx-auto w-full flex-1 px-4 pb-4 pt-4 sm:px-6 sm:pt-6 ${width === 'narrow' ? 'max-w-4xl' : 'max-w-6xl'}`}>
+        <PushPrompt />
         {children}
       </main>
       <AppFooter role={role} />

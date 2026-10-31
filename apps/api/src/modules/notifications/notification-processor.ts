@@ -1,8 +1,11 @@
-import { Prisma } from '../../../generated/prisma/client';
-import { NotificationStatus } from '../../../generated/prisma/enums';
+import {
+  NotificationChannel,
+  NotificationStatus,
+} from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../database/prisma.service';
 import { EmailDeliveryError, type EmailSender } from './email/email-sender';
 import { renderNotificationEmail } from './email/email-templates';
+import { NotificationQueue } from './notification-queue';
 import { decideDelivery, retryDelayMs } from './notification-rules';
 import {
   isAllowedRecipient,
@@ -27,18 +30,22 @@ export interface RunSummary {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Timestamps are stored as UTC in "timestamp without time zone": compare in UTC
-// explicitly so the database session time zone can never shift the result.
-const utc = (date: Date) =>
-  Prisma.sql`(${date.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
-
+// Email channel only; push messages are processed by PushProcessor.
 export class NotificationProcessor {
+  private readonly queue: NotificationQueue;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly sender: EmailSender,
     private readonly config: NotificationsConfig,
     private readonly clock: () => Date = () => new Date(),
-  ) {}
+  ) {
+    this.queue = new NotificationQueue(
+      prisma,
+      NotificationChannel.EMAIL,
+      clock,
+    );
+  }
 
   async runOnce(): Promise<RunSummary> {
     const summary: RunSummary = {
@@ -57,26 +64,26 @@ export class NotificationProcessor {
     if (!this.config.enabled) return { ...summary, stoppedBy: 'disabled' };
 
     const started = Date.now();
-    summary.recovered = await this.recoverExpiredClaims();
+    summary.recovered = await this.queue.recoverExpiredClaims(
+      this.config.maxAttempts,
+    );
 
-    const sentToday = await this.prisma.notification.count({
-      where: {
-        status: NotificationStatus.ACCEPTED,
-        acceptedAt: { gte: new Date(this.clock().getTime() - DAY_MS) },
-      },
-    });
+    const sentToday = await this.queue.countAccepted(
+      new Date(this.clock().getTime() - DAY_MS),
+    );
     summary.quotaLeft = Math.max(0, this.config.dailyLimit - sentToday);
     if (summary.quotaLeft === 0)
       return { ...summary, stoppedBy: 'daily_limit' };
 
-    const ids = await this.claim(
+    const ids = await this.queue.claim(
       Math.min(this.config.batchSize, summary.quotaLeft),
+      this.config.leaseMs,
     );
     summary.claimed = ids.length;
 
     for (let index = 0; index < ids.length; index++) {
       if (Date.now() - started > this.config.maxRuntimeMs) {
-        summary.released = await this.release(ids.slice(index));
+        summary.released = await this.queue.release(ids.slice(index));
         summary.stoppedBy = 'time_budget';
         break;
       }
@@ -85,78 +92,6 @@ export class NotificationProcessor {
       if (outcome === 'accepted') summary.quotaLeft -= 1;
     }
     return summary;
-  }
-
-  // Atomic claim: FOR UPDATE SKIP LOCKED lets two simultaneous runs take disjoint rows.
-  private async claim(limit: number): Promise<string[]> {
-    const now = this.clock();
-    const leaseUntil = new Date(now.getTime() + this.config.leaseMs);
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      UPDATE "Notification"
-      SET status = 'PROCESSING',
-          "lockedUntil" = ${utc(leaseUntil)},
-          attempts = attempts + 1,
-          "lastAttemptAt" = ${utc(now)},
-          "updatedAt" = ${utc(now)}
-      WHERE id IN (
-        SELECT id FROM "Notification"
-        WHERE status = 'PENDING' AND "scheduledFor" <= ${utc(now)}
-        ORDER BY "scheduledFor" ASC, id ASC
-        LIMIT ${limit}
-        FOR UPDATE SKIP LOCKED
-      )
-      RETURNING id`;
-    return rows.map((row) => row.id);
-  }
-
-  // A claim whose lease expired belongs to an interrupted run (killed cron, crash).
-  private async recoverExpiredClaims(): Promise<number> {
-    const now = this.clock();
-    const expired = {
-      status: NotificationStatus.PROCESSING,
-      lockedUntil: { lt: now },
-    };
-    const exhausted = await this.prisma.notification.updateMany({
-      where: { ...expired, attempts: { gte: this.config.maxAttempts } },
-      data: {
-        status: NotificationStatus.FAILED,
-        errorCode: 'LEASE_EXPIRED',
-        lockedUntil: null,
-      },
-    });
-    const retried = await this.prisma.notification.updateMany({
-      where: expired,
-      data: {
-        status: NotificationStatus.PENDING,
-        lockedUntil: null,
-        scheduledFor: now,
-      },
-    });
-    return exhausted.count + retried.count;
-  }
-
-  // Claimed but not attempted (time budget reached): back to the queue, attempt not counted.
-  private async release(ids: string[]): Promise<number> {
-    if (ids.length === 0) return 0;
-    const result = await this.prisma.notification.updateMany({
-      where: { id: { in: ids }, status: NotificationStatus.PROCESSING },
-      data: {
-        status: NotificationStatus.PENDING,
-        lockedUntil: null,
-        attempts: { decrement: 1 },
-      },
-    });
-    return result.count;
-  }
-
-  private async finish(
-    id: string,
-    data: Prisma.NotificationUpdateManyMutationInput,
-  ) {
-    await this.prisma.notification.updateMany({
-      where: { id, status: NotificationStatus.PROCESSING },
-      data: { ...data, lockedUntil: null },
-    });
   }
 
   private async processOne(
@@ -196,33 +131,30 @@ export class NotificationProcessor {
 
     const decision = decideDelivery(notification, now, this.config.maxDelayMs);
     if (!decision.send) {
-      await this.finish(id, {
+      await this.queue.finish(id, {
         status: NotificationStatus.CANCELLED,
         errorCode: decision.reason,
       });
       return 'skipped';
     }
     if (!isAllowedRecipient(decision.email, this.config.recipientAllowlist)) {
-      await this.finish(id, {
+      await this.queue.finish(id, {
         status: NotificationStatus.CANCELLED,
         errorCode: 'NOT_ALLOWLISTED',
       });
       return 'skipped';
     }
     // Abuse guard: bounded mail per person and day, whatever triggered it.
-    const sentToRecipient = await this.prisma.notification.count({
-      where: {
-        recipientUserId: notification.recipientUserId,
-        status: NotificationStatus.ACCEPTED,
-        acceptedAt: { gte: new Date(now.getTime() - DAY_MS) },
-      },
-    });
+    const sentToRecipient = await this.queue.countAccepted(
+      new Date(now.getTime() - DAY_MS),
+      notification.recipientUserId,
+    );
     const recipientLimit =
       decision.audience === 'PSYCHOLOGIST'
         ? this.config.psychologistDailyLimit
         : this.config.perRecipientDailyLimit;
     if (sentToRecipient >= recipientLimit) {
-      await this.finish(id, {
+      await this.queue.finish(id, {
         status: NotificationStatus.CANCELLED,
         errorCode: 'RECIPIENT_DAILY_LIMIT',
       });
@@ -242,7 +174,7 @@ export class NotificationProcessor {
         to: decision.email,
         ...email,
       });
-      await this.finish(id, {
+      await this.queue.finish(id, {
         status: NotificationStatus.ACCEPTED,
         acceptedAt: this.clock(),
         providerMessageId: messageId,
@@ -258,7 +190,7 @@ export class NotificationProcessor {
         failure.transient &&
         notification.attempts < this.config.maxAttempts
       ) {
-        await this.finish(id, {
+        await this.queue.finish(id, {
           status: NotificationStatus.PENDING,
           errorCode: failure.code,
           scheduledFor: new Date(
@@ -267,7 +199,7 @@ export class NotificationProcessor {
         });
         return 'retried';
       }
-      await this.finish(id, {
+      await this.queue.finish(id, {
         status: NotificationStatus.FAILED,
         errorCode: failure.code,
       });

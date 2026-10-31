@@ -70,11 +70,13 @@ model User {
   psychologistAvailabilities PsychologistAvailability[]
   psychologistAppointments   Appointment[]              @relation("PsychologistAppointments")
 
-  careRelationships CareRelationship[]      @relation("CarePsychologist")
-  clinicalNotes     ClinicalSessionNote[]   @relation("NoteAuthor")
-  auditLogs         AuditLog[]
-  notifications     Notification[]
-  dataConsents      DataProcessingConsent[]
+  careRelationships  CareRelationship[]      @relation("CarePsychologist")
+  clinicalNotes      ClinicalSessionNote[]   @relation("NoteAuthor")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  dataConsents       DataProcessingConsent[]
+  pushSubscriptions  PushSubscription[]
+  bookedAppointments Appointment[]           @relation("AppointmentBookedBy")
 }
 
 model Patient {
@@ -139,11 +141,14 @@ model Appointment {
   status             AppointmentStatus @default(SCHEDULED)
   cancelledAt        DateTime?
   cancellationReason String?
+  // Staff member who booked on the patient's behalf; null when the patient booked.
+  bookedByUserId     String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
   patient       Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
   psychologist  User                 @relation("PsychologistAppointments", fields: [psychologistId], references: [id], onDelete: Restrict)
+  bookedBy      User?                @relation("AppointmentBookedBy", fields: [bookedByUserId], references: [id], onDelete: Restrict)
   clinicalNote  ClinicalSessionNote?
   notifications Notification[]
 
@@ -215,10 +220,13 @@ enum NotificationType {
   APPOINTMENT_REMINDER
   APPOINTMENT_CANCELLATION
   APPOINTMENT_RESCHEDULE
+  // Push only: tells staff (reception) that an appointment was booked.
+  STAFF_NEW_BOOKING
 }
 
 enum NotificationChannel {
   EMAIL
+  PUSH
 }
 
 // ACCEPTED = the SMTP server accepted the message. It does NOT prove delivery to the
@@ -304,4 +312,23 @@ model DataProcessingConsent {
 
   @@unique([userId, documentId, purpose])
   @@index([userId, acceptedAt])
+}
+
+// Web Push subscription of one browser/device. Created only by the signed-in user
+// (POST /push/subscriptions); removed at logout or when the push service says it is gone.
+model PushSubscription {
+  id            String    @id @default(cuid())
+  userId        String
+  // Push service URL (allow-listed hosts only). Unique: if another account signs in on
+  // the same browser, the subscription moves to that account.
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  lastSuccessAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

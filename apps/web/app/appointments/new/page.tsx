@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ApiErrorNotice } from '../../../components/api-error-notice';
 import { BackLink, PageIntro } from '../../../components/app-shell';
+import { BookingStep as Step, SummaryRow } from '../../../components/booking-steps';
 import {
   ApiError,
   createAppointment,
@@ -229,30 +230,5 @@ export default function NewAppointmentPage() {
         </div>
       )}
     </>
-  );
-}
-
-function Step({ number, current, title, children }: { number: number; current: number; title: string; children: ReactNode }) {
-  const done = current > number;
-  return (
-    <section className={`surface p-5 sm:p-6 ${current === number ? 'ring-2 ring-forest/20' : ''}`} aria-labelledby={`step-${number}`}>
-      <h2 id={`step-${number}`} className="mb-4 flex items-center gap-3 font-serif text-lg">
-        <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-sans text-sm font-semibold ${done ? 'bg-forest text-white' : current === number ? 'border-2 border-primary text-forest' : 'border border-border text-muted-foreground'}`}>
-          {done ? '✓' : number}
-        </span>
-        {title}
-        {done && <span className="sr-only">(completado)</span>}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function SummaryRow({ label, value, capitalize = false }: { label: string; value?: string; capitalize?: boolean }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className={`mt-0.5 ${value ? `font-medium text-foreground ${capitalize ? 'first-letter:uppercase' : ''}` : 'italic text-muted-foreground'}`}>{value ?? 'Sin seleccionar'}</dd>
-    </div>
   );
 }

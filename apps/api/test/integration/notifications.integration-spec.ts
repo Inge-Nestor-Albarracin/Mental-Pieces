@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../src/database/prisma.service';
 import { AppointmentLifecycleService } from '../../src/modules/appointments/appointment-lifecycle.service';
 import { AppointmentsService } from '../../src/modules/appointments/appointments.service';
+import { PushDispatcher } from '../../src/modules/push/push-dispatcher';
 import { businessNow } from '../../src/modules/appointments/appointment-time';
 import {
   EmailDeliveryError,
@@ -67,7 +68,11 @@ const config = (
 describe('Email notifications: outbox + processor (Level I, disposable PostgreSQL)', () => {
   const prisma = new PrismaService();
   const fx = new Fixtures(prisma);
-  const appointments = new AppointmentsService(prisma);
+  // Push is disabled (no PUSH_ENABLED): kick() is a no-op.
+  const appointments = new AppointmentsService(
+    prisma,
+    new PushDispatcher(prisma),
+  );
   const lifecycle = new AppointmentLifecycleService(prisma);
   let psychologist: FixtureUser;
 

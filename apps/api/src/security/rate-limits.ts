@@ -17,6 +17,12 @@ export const RATE_LIMITS = {
   appointmentWrite: { ttl: 60 * MINUTE, limit: 30 },
   // Expensive aggregate reads (alerts evaluate every active relationship).
   heavyRead: { ttl: MINUTE, limit: 20 },
+  // Registering / removing this device's push subscription (login, logout, refresh).
+  pushSubscription: { ttl: 60 * MINUTE, limit: 30 },
+  // "Send me a test notification": real requests to the browser's push service.
+  pushTest: { ttl: 60 * MINUTE, limit: 5 },
+  // Reception searching patients by name, MRN, email or phone.
+  patientSearch: { ttl: MINUTE, limit: 40 },
 } as const;
 
 export function throttle(rule: { ttl: number; limit: number }) {

@@ -1,7 +1,9 @@
 import type { Prisma } from '../../../generated/prisma/client';
 import {
+  NotificationChannel,
   NotificationStatus,
   NotificationType,
+  UserRole,
 } from '../../../generated/prisma/enums';
 import { reminderInstant } from './notification-time';
 
@@ -13,6 +15,10 @@ import { reminderInstant } from './notification-time';
 // Booking, rescheduling and cancelling notify BOTH the patient and the psychologist.
 // The audience is not stored: the processor derives it by comparing recipientUserId
 // with the appointment's patient and psychologist (no extra column, no migration).
+//
+// Push: every email message also gets a PUSH twin (key prefixed "push:"), but only for
+// recipients that have at least one push subscription at that moment. Bookings also
+// alert every active STAFF account with a subscription (STAFF_NEW_BOOKING, push only).
 
 export interface AppointmentSlot {
   appointmentId: string;
@@ -54,6 +60,19 @@ export async function cancelPendingNotifications(
   return result.count;
 }
 
+const pushKey = (key: string) => `push:${key}`;
+
+// Users (among `userIds`) that can receive a push right now.
+async function pushReachable(tx: Tx, userIds: string[]): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await tx.pushSubscription.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  return new Set(rows.map((row) => row.userId));
+}
+
 async function queueForBoth(
   tx: Tx,
   slot: AppointmentSlot,
@@ -61,28 +80,98 @@ async function queueForBoth(
   baseKey: string,
   now: Date,
 ) {
+  const reachable = await pushReachable(tx, [
+    slot.patientUserId,
+    slot.psychologistUserId,
+  ]);
   for (const audience of ['patient', 'psychologist'] as const) {
+    const recipientUserId = recipientOf(slot, audience);
+    const data = {
+      type,
+      recipientUserId,
+      appointmentId: slot.appointmentId,
+      appointmentDate: slot.appointmentDate,
+      startMinute: slot.startMinute,
+      scheduledFor: now,
+    };
+    await tx.notification.create({
+      data: { ...data, idempotencyKey: keyFor(audience, baseKey) },
+      select: { id: true },
+    });
+    if (reachable.has(recipientUserId)) {
+      await tx.notification.create({
+        data: {
+          ...data,
+          channel: NotificationChannel.PUSH,
+          idempotencyKey: pushKey(keyFor(audience, baseKey)),
+        },
+        select: { id: true },
+      });
+    }
+  }
+}
+
+// New booking: a push alert to every active staff account with a subscription,
+// except the staff member who made the booking.
+async function queueStaffBookingAlerts(
+  tx: Tx,
+  slot: AppointmentSlot,
+  now: Date,
+  bookedByUserId?: string,
+) {
+  const staff = await tx.user.findMany({
+    where: {
+      role: UserRole.STAFF,
+      isActive: true,
+      pushSubscriptions: { some: {} },
+      ...(bookedByUserId ? { id: { not: bookedByUserId } } : {}),
+    },
+    select: { id: true },
+  });
+  for (const member of staff) {
     await tx.notification.create({
       data: {
-        type,
-        recipientUserId: recipientOf(slot, audience),
+        type: NotificationType.STAFF_NEW_BOOKING,
+        channel: NotificationChannel.PUSH,
+        recipientUserId: member.id,
         appointmentId: slot.appointmentId,
         appointmentDate: slot.appointmentDate,
         startMinute: slot.startMinute,
         scheduledFor: now,
-        idempotencyKey: keyFor(audience, baseKey),
+        idempotencyKey: `push:staff-booking:${slot.appointmentId}:${member.id}`,
       },
       select: { id: true },
     });
   }
 }
 
-// 24 h reminder: patient only, and only sent if the patient opted in.
+// 24 h reminder: patient only. Email only if the patient opted in (checked when
+// sending); push if the patient has a subscription.
 async function scheduleReminder(tx: Tx, slot: AppointmentSlot, now: Date) {
   const at = reminderInstant(slot.appointmentDate, slot.startMinute, now);
   if (!at) return; // Less than 24 h left: confirmation only (documented policy).
+  await armReminder(tx, slot, at, NotificationChannel.EMAIL, reminderKey(slot));
+  if ((await pushReachable(tx, [slot.patientUserId])).size > 0) {
+    await armReminder(
+      tx,
+      slot,
+      at,
+      NotificationChannel.PUSH,
+      pushKey(reminderKey(slot)),
+    );
+  }
+}
+
+async function armReminder(
+  tx: Tx,
+  slot: AppointmentSlot,
+  at: Date,
+  channel: NotificationChannel,
+  idempotencyKey: string,
+) {
   const data = {
     type: NotificationType.APPOINTMENT_REMINDER,
+    channel,
     recipientUserId: slot.patientUserId,
     appointmentId: slot.appointmentId,
     appointmentDate: slot.appointmentDate,
@@ -92,12 +181,12 @@ async function scheduleReminder(tx: Tx, slot: AppointmentSlot, now: Date) {
   // Moving back to a slot used before re-arms its cancelled reminder instead of
   // violating the unique key; an already sent reminder is never sent again.
   const existing = await tx.notification.findUnique({
-    where: { idempotencyKey: reminderKey(slot) },
+    where: { idempotencyKey },
     select: { id: true, status: true },
   });
   if (!existing) {
     await tx.notification.create({
-      data: { ...data, idempotencyKey: reminderKey(slot) },
+      data: { ...data, idempotencyKey },
       select: { id: true },
     });
   } else if (existing.status === NotificationStatus.CANCELLED) {
@@ -119,6 +208,7 @@ export async function enqueueAppointmentBooked(
   tx: Tx,
   slot: AppointmentSlot,
   now = new Date(),
+  bookedByUserId?: string,
 ): Promise<void> {
   await queueForBoth(
     tx,
@@ -128,6 +218,7 @@ export async function enqueueAppointmentBooked(
     now,
   );
   await scheduleReminder(tx, slot, now);
+  await queueStaffBookingAlerts(tx, slot, now, bookedByUserId);
 }
 
 export async function enqueueAppointmentRescheduled(
@@ -142,6 +233,7 @@ export async function enqueueAppointmentRescheduled(
     where: {
       appointmentId: slot.appointmentId,
       type: NotificationType.APPOINTMENT_RESCHEDULE,
+      channel: NotificationChannel.EMAIL,
       recipientUserId: slot.patientUserId,
     },
   });

@@ -53,6 +53,13 @@ const COPY: Record<
     intro: 'Este es el nuevo horario de tu cita en Mental Pieces:',
     outro: 'El horario anterior ya no es válido.',
   },
+  // Push only (decideDelivery never sends it by email); kept for a complete table.
+  STAFF_NEW_BOOKING: {
+    subject: 'Nueva cita agendada',
+    title: 'Se agendó una nueva cita',
+    intro: 'Se agendó la siguiente cita en Mental Pieces:',
+    outro: 'Consulta los detalles en la agenda del portal.',
+  },
 };
 
 type Copy = { subject: string; title: string; intro: string; outro: string };

@@ -7,7 +7,7 @@
 | Última actualización | 30 de octubre de 2026 |
 | Último commit en `main` | `fd3f9af` — «Politica de datos de registro añadadida» (sincronizado con `origin/main`) |
 | Producción | Web: `https://mentalpieces.site` · API: `https://api.mentalpieces.site` |
-| Base de datos | PostgreSQL en Supabase, 9 de 9 migraciones aplicadas |
+| Base de datos | PostgreSQL en Supabase, 10 de 10 migraciones aplicadas |
 | Pruebas unitarias | API: 87 de 87 correctas · Web: 80 de 80 correctas (ejecutadas el 29-10-2026) |
 
 ---
@@ -36,7 +36,7 @@ Están en funcionamiento:
 |---|---|---|
 | Aplicación web (Next.js) | En producción | Hostinger Business, Node.js 22, despliegue automático desde `main`. |
 | API REST (NestJS) | En producción | Hostinger Business, Node.js 22, despliegue automático desde `main`. |
-| Base de datos | Al día | Supabase (pooler de sesión, puerto 5432). Las 9 migraciones están aplicadas; la última se aplicó el 29-10-2026. |
+| Base de datos | Al día | Supabase (pooler de sesión, puerto 5432). Las 10 migraciones están aplicadas; la última se aplicó el 30-10-2026. |
 | Procesador de notificaciones | Configurar y verificar | Cron de Hostinger con el comando `src/cli/notifications.js process`. La programación correcta es `*/5 * * * *`; la que se vio configurada era `*/5 0 * * *`, que solo corre de 00:00 a 00:59. |
 | Política de datos | Publicada | Versión 1.0, publicada el 30-10-2026 (SHA-256 `56ddc26e…74a5feb8`). Responsable: MENTAL PIECES BY PAULA SARMIENTO S A S, NIT 901911280. |
 | Texto de la casilla de autorización | Pendiente de despliegue | Actualizado en `/register` y `/autorizacion-de-datos` para nombrar al responsable; falta commit y push. |
@@ -59,22 +59,22 @@ Estados: **Completo** · **Parcial** · **No implementado** · **Bloqueado** (im
 | RF-07 | Gestionar cuentas internas | Parcial | Solo crear y consultar. Falta actualizar, cambiar el rol y activar o desactivar. |
 | RF-08 | Horarios y bloqueos de disponibilidad | Parcial | Hay horarios semanales con validación de superposición. Faltan los bloqueos por fecha (vacaciones, ausencias). Solo los gestiona el psicólogo. |
 | RF-09 | Consultar disponibilidad | Completo | Solo muestra espacios futuros, habilitados y libres. |
-| RF-10 | Programar cita | Parcial | El paciente sí puede. El personal administrativo no tiene portal para agendar por el paciente. |
-| RF-11 | Consultar citas según el rol | Parcial | Paciente y psicólogo sí. No hay vista administrativa de citas. |
+| RF-10 | Programar cita | Completo* | El paciente y, desde el portal Staff, el personal administrativo (para otro paciente, con las mismas reglas). *Pendiente de despliegue. |
+| RF-11 | Consultar citas según el rol | Completo* | Paciente, psicólogo y Staff (citas próximas de cada psicólogo). *Pendiente de despliegue. |
 | RF-12 | Cancelar cita | Parcial | El paciente sí puede; el personal administrativo no. |
 | RF-13 | Reprogramar cita | Parcial | El paciente sí puede; el personal administrativo no. |
 | RF-14 | Evitar doble asignación | Completo | Transacción SERIALIZABLE con reintentos. Probado con concurrencia (`docs/audits/2026-10-29-pruebas-concurrencia.md`). |
 | RF-15 | Estado y asistencia | Completo | El psicólogo marca «Realizada» o «No asistió» después de la hora de finalización. |
 | RF-16 | Registrar en lista de espera | No implementado | — |
 | RF-17 | Identificar pacientes de la lista de espera | No implementado | — |
-| RF-18 | Notificaciones | Completo | Confirmación, reprogramación, cancelación y recordatorio de 24 horas. Depende de que el cron esté bien configurado. |
+| RF-18 | Notificaciones | Completo | Correo: confirmación, reprogramación, cancelación y recordatorio de 24 h (depende del cron). Push en la PWA para todos los roles, con aviso al staff por cada cita nueva: implementado, pendiente de despliegue. |
 | RF-19 | Nota previa del paciente | No implementado | — |
 | RF-20 | Notas de evolución | Completo | Requieren una relación clínica activa; quedan registradas en la auditoría. |
 | RF-21 | Historial de seguimiento | Completo | Historial paginado, visible solo para el psicólogo asignado. |
 | RF-22 | Alertas de inactividad | Completo | Reglas: 14 días sin primera sesión; más de 30 días sin sesión (alta desde 60); 2 inasistencias seguidas. |
 | RF-23 | Estadísticas administrativas | No implementado | — |
 
-**Totales:** 12 completos · 7 parciales · 4 no implementados · 0 bloqueados (23 en total).
+**Totales:** 14 completos (2 pendientes de despliegue) · 5 parciales · 4 no implementados · 0 bloqueados (23 en total).
 
 ## 4. Estado de los requisitos no funcionales
 
@@ -102,6 +102,7 @@ Estados: **Completo** · **Parcial** · **No implementado** · **Bloqueado** (im
 | `20261015120000_lock_down_supabase_data_api` | RLS y bloqueo de la API de datos de Supabase | Aplicada |
 | `20261025150000_add_email_notifications` | Cola de notificaciones | Aplicada |
 | `20261028120000_add_data_processing_consent` | Documentos legales y evidencia de consentimiento | Aplicada el 29-10-2026 |
+| `20261030160000_add_push_and_staff_booking` | Suscripciones push, canal PUSH y cita agendada por staff | Aplicada el 30-10-2026 |
 
 Procedimiento para nuevas migraciones en Supabase:
 
@@ -115,9 +116,10 @@ Procedimiento para nuevas migraciones en Supabase:
 
 | Tipo | Herramienta | Resultado | Fecha |
 |---|---|---|---|
-| Unitarias API | Jest 30 | 12 suites, 87 pruebas correctas | 29-10-2026 |
-| Unitarias web | `node:test` | 80 pruebas correctas | 29-10-2026 |
-| E2E API (`apps/api/test/*.e2e-spec.ts`) | Jest + Supertest | Existen 7 suites; se ejecutan contra la base local de pruebas | Ver informes |
+| Unitarias API | Jest 30 | 13 suites, 115 pruebas correctas | 30-10-2026 |
+| Unitarias web | `node:test` | 88 pruebas correctas | 30-10-2026 |
+| E2E API (`apps/api/test/*.e2e-spec.ts`) | Jest + Supertest | 8 suites, 195 pruebas correctas (base de datos simulada) | 30-10-2026 |
+| Integración (`apps/api/test/integration`) | Jest + PostgreSQL local desechable | 5 suites, 76 pruebas correctas | 30-10-2026 |
 | Integración y concurrencia | Jest (`test/integration`) | Ver `docs/audits/2026-10-29-pruebas-concurrencia.md` | 29-10-2026 |
 | Rendimiento | Scripts en `apps/api/test/performance` | Ver la auditoría del 25-10-2026 | 25-10-2026 |
 
@@ -208,7 +210,9 @@ Funcionalidades:
 - [ ] Funciones pendientes del Anexo A: lista de espera (RF-16 y RF-17), nota previa (RF-19), estadísticas (RF-23).
 - [ ] Gestión completa de cuentas internas (RF-07).
 - [ ] Bloqueos de agenda por fecha (RF-08).
-- [ ] Portal del personal administrativo (RF-10 a RF-13).
+- [x] Portal Staff: agendar para pacientes y ver las citas próximas de cada psicólogo (RF-10, RF-11). Pendiente de despliegue.
+- [ ] Staff: cancelar y reprogramar citas de pacientes (RF-12, RF-13).
+- [ ] Desplegar push y el portal Staff: claves VAPID en Hostinger (API y cron), commit y push; la migración `20261030160000` ya está aplicada (ver `docs/notificaciones-push-y-recepcion.md`).
 - [ ] Edición de perfil del psicólogo y del administrador (RF-05).
 
 Repositorio:
@@ -268,3 +272,5 @@ cd apps/api && pnpm exec prisma migrate status
 |---|---|
 | 29-10-2026 | Creación del documento. Migración `20261028120000_add_data_processing_consent` aplicada en Supabase; la API pasa de 500 a 404 en `/legal/data-processing-policy` (política aún no publicada). Pruebas: API 87/87 y web 80/80. Diagramas de despliegue, E-R y C4 creados para la tesis. |
 | 30-10-2026 | Publicada la Política de Tratamiento de Datos Personales v1.0 en Supabase; producción la sirve (HTTP 200). Se abren el registro y las reservas. El texto de la casilla de autorización se actualizó en el código, pendiente de despliegue. |
+| 30-10-2026 | Notificaciones push en la PWA (todos los roles) y portal Staff: agendar para pacientes, agenda de citas próximas por psicólogo y aviso push al staff por cada cita nueva. Implementado y probado en local (API 115 + 195 e2e + 76 integración, web 88); pendiente de despliegue y de la migración `20261030160000` en Supabase. |
+| 30-10-2026 | Migración `20261030160000_add_push_and_staff_booking` aplicada en Supabase (sin divergencias). La API sigue en producción (HTTP 200) tras el redespliegue. |

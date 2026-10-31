@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { NAV_LINKS, ROLE_LABEL, homeHref, type ShellRole } from '../lib/navigation';
+import { disablePushForLogout } from '../lib/push';
 import { Icon } from './ui';
 
 function isCurrent(pathname: string, href: string, home: string): boolean {
@@ -20,7 +21,9 @@ export function AppHeader({ role = 'PATIENT' }: { role?: ShellRole }) {
   const home = homeHref(role);
   const links = NAV_LINKS[role];
 
-  function logout() {
+  async function logout() {
+    // This device stops receiving the account's notifications before the token is dropped.
+    await disablePushForLogout(sessionStorage.getItem('accessToken'));
     sessionStorage.removeItem('accessToken');
     router.replace('/login');
   }
@@ -42,7 +45,7 @@ export function AppHeader({ role = 'PATIENT' }: { role?: ShellRole }) {
             <Link key={href} href={href} aria-current={isCurrent(pathname, href, home) ? 'page' : undefined} className={linkClass}>{label}</Link>
           ))}
           <span aria-hidden="true" className="mx-0.5 h-6 w-px bg-border" />
-          <button type="button" onClick={logout} className="inline-flex min-h-11 items-center gap-2 rounded-[11px] px-4 py-2 text-sm font-semibold text-[#8e514c] transition hover:bg-red-50">
+          <button type="button" onClick={() => void logout()} className="inline-flex min-h-11 items-center gap-2 rounded-[11px] px-4 py-2 text-sm font-semibold text-[#8e514c] transition hover:bg-red-50">
             <Icon name="logout" size={17} /> Salir
           </button>
         </nav>
@@ -64,7 +67,7 @@ export function AppHeader({ role = 'PATIENT' }: { role?: ShellRole }) {
               ))}
               <li aria-hidden="true" className="my-1 h-px bg-border" />
               <li>
-                <button type="button" onClick={logout} className="inline-flex min-h-11 w-full items-center gap-2 rounded-[11px] px-4 py-2 text-sm font-semibold text-[#8e514c] hover:bg-red-50">
+                <button type="button" onClick={() => void logout()} className="inline-flex min-h-11 w-full items-center gap-2 rounded-[11px] px-4 py-2 text-sm font-semibold text-[#8e514c] hover:bg-red-50">
                   <Icon name="logout" size={17} /> Cerrar sesión
                 </button>
               </li>

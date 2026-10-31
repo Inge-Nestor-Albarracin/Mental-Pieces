@@ -564,3 +564,92 @@ export function updateEmailReminders(
     body: JSON.stringify({ emailReminders }),
   });
 }
+
+// ---- Web Push (every role) ----
+
+export interface PushConfig {
+  enabled: boolean;
+  publicKey: string | null;
+}
+
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+export function getPushConfig(token: string): Promise<PushConfig> {
+  return authenticatedRequest(token, '/push/config', 'No fue posible consultar las notificaciones.');
+}
+
+export function savePushSubscription(token: string, subscription: PushSubscriptionPayload): Promise<{ subscribed: boolean }> {
+  return authenticatedRequest(token, '/push/subscriptions', 'No fue posible activar las notificaciones.', {
+    method: 'POST',
+    body: JSON.stringify(subscription),
+  });
+}
+
+export function removePushSubscription(token: string, endpoint: string): Promise<{ subscribed: boolean }> {
+  return authenticatedRequest(token, '/push/subscriptions', 'No fue posible desactivar las notificaciones.', {
+    method: 'DELETE',
+    body: JSON.stringify({ endpoint }),
+  });
+}
+
+export function sendTestPush(token: string): Promise<{ devices: number; delivered: number }> {
+  return authenticatedRequest(token, '/push/test', 'No fue posible enviar la notificación de prueba.', { method: 'POST' });
+}
+
+// ---- Reception desk (STAFF) ----
+
+export type BookingBlocker = 'PROFILE_INCOMPLETE' | 'DATA_POLICY' | 'MINOR';
+
+export interface DeskPatient {
+  id: string;
+  mrn: string;
+  fullName: string | null;
+  email: string;
+  phone: string | null;
+  canBook: boolean;
+  blockers: BookingBlocker[];
+}
+
+export interface DeskAppointment {
+  id: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+  bookedByStaff: boolean;
+  patient: { id: string; fullName: string | null; mrn: string };
+}
+
+export interface DeskAgenda {
+  from: string;
+  until: string;
+  psychologists: {
+    psychologist: { id: string; fullName: string | null; position: string | null };
+    appointments: DeskAppointment[];
+  }[];
+}
+
+export interface DeskBookingPayload extends CreateAppointmentPayload {
+  patientId: string;
+}
+
+export function searchDeskPatients(token: string, search: string): Promise<{ items: DeskPatient[]; hasMore: boolean }> {
+  const params = new URLSearchParams({ search });
+  return authenticatedRequest(token, `/staff-desk/patients?${params.toString()}`, 'No fue posible buscar pacientes.');
+}
+
+export function getDeskAgenda(token: string, days = 14, psychologistId?: string): Promise<DeskAgenda> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (psychologistId) params.set('psychologistId', psychologistId);
+  return authenticatedRequest(token, `/staff-desk/agenda?${params.toString()}`, 'No fue posible cargar la agenda.');
+}
+
+export function createDeskAppointment(token: string, payload: DeskBookingPayload): Promise<AppointmentSummary> {
+  return authenticatedRequest(token, '/staff-desk/appointments', 'No fue posible crear la cita.', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}

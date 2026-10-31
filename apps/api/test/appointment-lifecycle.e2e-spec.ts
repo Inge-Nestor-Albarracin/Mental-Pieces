@@ -14,6 +14,7 @@ import { AppointmentLifecycleController } from '../src/modules/appointments/appo
 import { AppointmentLifecycleService } from '../src/modules/appointments/appointment-lifecycle.service';
 import { AppointmentsController } from '../src/modules/appointments/appointments.controller';
 import { AppointmentsService } from '../src/modules/appointments/appointments.service';
+import { PushDispatcher } from '../src/modules/push/push-dispatcher';
 
 const id = `c${'8'.repeat(24)}`;
 const psychologistId = `c${'2'.repeat(24)}`;
@@ -95,6 +96,7 @@ describe('Appointment lifecycle HTTP (no real database)', () => {
         JwtAuthGuard,
         RolesGuard,
         { provide: PrismaService, useValue: database },
+        { provide: PushDispatcher, useValue: { kick: jest.fn() } },
       ],
     }).compile();
     app = module.createNestApplication();
