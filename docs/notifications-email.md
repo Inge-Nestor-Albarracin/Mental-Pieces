@@ -269,6 +269,24 @@ clínicos. Luego deja `NOTIFICATIONS_TEST_RECIPIENT=` vacío.
 
 ### Paso 7 — Crear el cron (hPanel → Avanzado → Cron Jobs → Personalizado)
 
+> **Actualización 3-11-2026 (recomendado).** El cron configurado en Hostinger usaba el modo «Node.js» sin
+> `--env-file`. Los cron jobs **no reciben las variables de la aplicación**, así que el comando veía el envío
+> desactivado y nunca procesó la cola: 0 intentos en todas las filas. Ver
+> `docs/audits/2026-11-03-correos-push-seguridad.md`.
+>
+> Ahora existe una alternativa sin archivo privado: con `NOTIFICATIONS_CRON_SECRET` definida en la
+> aplicación de la API, el cron solo hace una llamada HTTP, y la API (que ya tiene `SMTP_*`, `VAPID_*` y
+> `DATABASE_URL`) procesa correos y push:
+>
+> ```bash
+> curl -fsS -X POST -H "X-Cron-Secret: <secreto>" https://api.mentalpieces.site/internal/notifications/run
+> ```
+>
+> - **Frecuencia:** `*/5 * * * *`.
+> - **Respuestas:** 202 = correcto; 401 = el secreto no coincide; 404 = falta la variable o no se ha redesplegado.
+>
+> La opción con `--env-file` descrita a continuación sigue siendo válida.
+
 Frecuencia: cada 5 minutos (`*/5 * * * *`). Comando (una sola línea):
 
 ```bash

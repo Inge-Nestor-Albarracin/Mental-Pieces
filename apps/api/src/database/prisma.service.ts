@@ -1,13 +1,10 @@
 import 'dotenv/config';
 
-import {
-  Injectable,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../generated/prisma/client';
+import { databaseConnection } from './database-ssl';
 
 @Injectable()
 export class PrismaService
@@ -23,8 +20,11 @@ export class PrismaService
       );
     }
 
+    // Remote databases always over TLS (see database-ssl.ts).
+    const { connectionString: url, ssl } = databaseConnection(connectionString);
     const adapter = new PrismaPg({
-      connectionString,
+      connectionString: url,
+      ssl,
     });
 
     super({ adapter });

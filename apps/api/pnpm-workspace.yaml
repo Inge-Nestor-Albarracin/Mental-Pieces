@@ -8,10 +8,11 @@ allowBuilds:
 # where pnpm's symlinks no longer resolve (startup failed: Cannot find module 'tslib').
 nodeLinker: hoisted
 
-# Security: patched transitive versions (pnpm audit, 2026-10-15).
+# Security: patched transitive versions (pnpm audit, 2026-10-15; qs updated 2026-11-03).
+# Accepted: deepmerge-ts 7.x is pinned by prisma and only merges trusted CLI config.
 overrides:
   proxy-addr: ^2.0.8
-  qs: ^6.15.4
+  qs: ^6.16.1
   body-parser: ^2.4.0
   multer: ^2.5.0
   # Dev/build tooling only (ts-jest, eslint, jest): advisories reviewed 2026-10-25.

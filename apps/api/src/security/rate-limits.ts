@@ -21,6 +21,8 @@ export const RATE_LIMITS = {
   pushSubscription: { ttl: 60 * MINUTE, limit: 30 },
   // "Send me a test notification": real requests to the browser's push service.
   pushTest: { ttl: 60 * MINUTE, limit: 5 },
+  // Hostinger cron triggering the notification queue (every 5 min = 12/h).
+  cronTrigger: { ttl: 60 * MINUTE, limit: 30 },
   // Reception searching patients by name, MRN, email or phone.
   patientSearch: { ttl: MINUTE, limit: 40 },
 } as const;

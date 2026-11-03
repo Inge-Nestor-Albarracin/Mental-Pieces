@@ -91,7 +91,7 @@ Aplicada **solo** en la base local desechable. Después, `prisma migrate diff` q
    - entrar como staff en Chrome y pulsar «Activar» debe mostrar una notificación de prueba;
    - agendar una cita como paciente de prueba debe hacer llegar «Nueva cita agendada» al staff en segundos;
    - en iPhone/iPad, push solo funciona con la app instalada en la pantalla de inicio (iOS 16.4 o posterior). El aviso lo explica.
-6. **Revisar el cron.** Debe ejecutarse cada 5 minutos (`*/5 * * * *`); en Hostinger se había visto configurado como `*/5 0 * * *`.
+6. **Configurar el cron por HTTP.** Debe ejecutarse cada 5 minutos (`*/5 * * * *`) con `curl -fsS -X POST -H "X-Cron-Secret: <secreto>" https://api.mentalpieces.site/internal/notifications/run`, y la variable `NOTIFICATIONS_CRON_SECRET` debe estar en la API. Los cron jobs de Hostinger no reciben las variables de la app (ver `docs/audits/2026-11-03-correos-push-seguridad.md`).
 
 Sin `PUSH_ENABLED=true`, todo sigue funcionando como antes: no se muestra el aviso y no se crean filas push.
 

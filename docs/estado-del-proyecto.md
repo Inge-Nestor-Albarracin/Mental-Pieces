@@ -37,7 +37,8 @@ Están en funcionamiento:
 | Aplicación web (Next.js) | En producción | Hostinger Business, Node.js 22, despliegue automático desde `main`. |
 | API REST (NestJS) | En producción | Hostinger Business, Node.js 22, despliegue automático desde `main`. |
 | Base de datos | Al día | Supabase (pooler de sesión, puerto 5432). Las 10 migraciones están aplicadas; la última se aplicó el 30-10-2026. |
-| Procesador de notificaciones | Configurar y verificar | Cron de Hostinger con el comando `src/cli/notifications.js process`. La programación correcta es `*/5 * * * *`; la que se vio configurada era `*/5 0 * * *`, que solo corre de 00:00 a 00:59. |
+| Procesador de notificaciones | **No funciona** (causa encontrada) | Nunca se ha intentado un correo: el cron de Hostinger no recibe las variables de la app. Corregido en código con `POST /internal/notifications/run` (secreto `NOTIFICATIONS_CRON_SECRET`); falta desplegar y cambiar el cron a `curl` cada 5 minutos. Ver `docs/audits/2026-11-03-correos-push-seguridad.md`. |
+| Conexión a Supabase | **Sin cifrar** hasta el próximo despliegue | Supabase acepta conexiones sin TLS y la URL no tenía `sslmode`. Corregido en código: TLS obligatorio (`src/database/database-ssl.ts`); después, activar «Enforce SSL» en Supabase. |
 | Política de datos | Publicada | Versión 1.0, publicada el 30-10-2026 (SHA-256 `56ddc26e…74a5feb8`). Responsable: MENTAL PIECES BY PAULA SARMIENTO S A S, NIT 901911280. |
 | Texto de la casilla de autorización | Pendiente de despliegue | Actualizado en `/register` y `/autorizacion-de-datos` para nombrar al responsable; falta commit y push. |
 | Secretos | Pendiente de rotación | Rotar `JWT_SECRET` y la contraseña SMTP, que quedaron visibles en una captura de pantalla. |
@@ -274,3 +275,4 @@ cd apps/api && pnpm exec prisma migrate status
 | 30-10-2026 | Publicada la Política de Tratamiento de Datos Personales v1.0 en Supabase; producción la sirve (HTTP 200). Se abren el registro y las reservas. El texto de la casilla de autorización se actualizó en el código, pendiente de despliegue. |
 | 30-10-2026 | Notificaciones push en la PWA (todos los roles) y portal Staff: agendar para pacientes, agenda de citas próximas por psicólogo y aviso push al staff por cada cita nueva. Implementado y probado en local (API 115 + 195 e2e + 76 integración, web 88); pendiente de despliegue y de la migración `20261030160000` en Supabase. |
 | 30-10-2026 | Migración `20261030160000_add_push_and_staff_booking` aplicada en Supabase (sin divergencias). La API sigue en producción (HTTP 200) tras el redespliegue. |
+| 03-11-2026 | Verificación de correos, push y seguridad: los correos nunca se enviaron (el cron no recibía variables) → disparador HTTP del cron; conexión a Supabase sin TLS → TLS obligatorio; `qs` actualizado. Push verificado a nivel de protocolo (21/21) y service worker (6/6). Pruebas: API 120 + 200 e2e + 76 integración, web 88. Pendiente de desplegar. |
